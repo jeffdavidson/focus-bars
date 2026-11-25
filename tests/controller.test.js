@@ -248,3 +248,45 @@ test('delete message removes focus and moves its windows to General', async () =
   assert.equal((await readWindows(api.storage.session))[1].focusId, generalId);
   assert.equal(api._badge(), 'Gene');
 });
+
+test('fingerprint write during a swap does not clobber swap state', async () => {
+  const { api, ctl, h, devId, generalId } = await setup();
+  await ctl.boot();
+  await ctl.restoreWindows();
+  h.advance(60_000);
+  await h.runDue();
+  await ctl.assign(2, devId);
+  // Window 2 gains focus (swap to Dev) while window 1's tab update lands mid-swap.
+  api._windows[0].focused = false;
+  api._windows[1].focused = true;
+  api._addTab(1, 'https://g/2');
+  ctl.onTabsChanged(1);
+  h.advance(2_000);
+  let tabs = null;
+  api.bookmarks.onMoved.addListener(() => { tabs ??= h.runDue(); }); // lands mid-swap
+  await ctl.onFocusChanged(2);
+  await tabs;
+  const state = await readState(api.storage.local);
+  assert.equal(state.journal, null);
+  assert.equal(state.activeId, devId);
+  assert.deepEqual(api._titles('1'), ['x', 'y']);
+  assert.deepEqual(api._titles(generalId), ['a', 'b', 'c']);
+  const key = (await readWindows(api.storage.session))[1].printKey;
+  assert.deepEqual(state.prints[key].urls.sort(), ['https://g/1', 'https://g/2']);
+});
+
+test('bookmark event during a swap does not clobber swap state', async () => {
+  const { api, ctl, devId } = await setup();
+  await ctl.boot();
+  await ctl.restoreWindows();
+  await ctl.assign(2, devId);
+  api._windows[0].focused = false;
+  api._windows[1].focused = true;
+  const pending = [];
+  api.bookmarks.onMoved.addListener((id, info) => pending.push(ctl.onBookmarkEvent('moved', id, info)));
+  await ctl.onFocusChanged(2);
+  await Promise.all(pending);
+  const state = await readState(api.storage.local);
+  assert.equal(state.journal, null);
+  assert.equal(state.activeId, devId);
+});

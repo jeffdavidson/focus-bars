@@ -14,8 +14,12 @@ const validFocus = (state, id) => (state.focusIds.includes(id) ? id : state.gene
 
 /**
  * All of the extension's behaviour, driven by Chrome events. Holds no state of
- * its own beyond timers: everything lives in chrome.storage, so a fresh
- * controller after a service-worker restart behaves the same.
+ * its own beyond timers and a lock: everything lives in chrome.storage, so a
+ * fresh controller after a service-worker restart behaves the same.
+ *
+ * Every read-modify-write of stored state runs inside `exclusive`, so a tab
+ * update or bookmark event arriving mid-swap can never overwrite the swap's
+ * journal (or be overwritten by it). Swaps are requested only outside it.
  */
 export function createController(api, {
   now = () => Date.now(),
@@ -25,12 +29,18 @@ export function createController(api, {
 } = {}) {
   const debounces = new Map();
 
-  const switcher = createSwitcher(async (focusId) => {
+  let tail = Promise.resolve();
+  function exclusive(fn) {
+    const run = tail.then(fn, fn);
+    tail = run.catch(() => {});
+    return run;
+  }
+
+  const switcher = createSwitcher((focusId) => exclusive(async () => {
     const state = await readState(api.storage.local);
     if (!state || state.needsRecovery) return;
     await swapBar(api, validFocus(state, focusId));
-    await updateBadge();
-  });
+  }).then(updateBadge));
 
   async function updateBadge() {
     const state = await readState(api.storage.local);
@@ -66,7 +76,7 @@ export function createController(api, {
     if (map[windowId]) await switcher.request(map[windowId].focusId);
   }
 
-  /** Save the window's current tabs as its fingerprint. */
+  /** Save the window's current tabs as its fingerprint. Call only inside `exclusive`. */
   async function writePrint(windowId, urls) {
     const map = await readWindows(api.storage.session);
     const entry = map[windowId];
@@ -78,29 +88,33 @@ export function createController(api, {
     await writeWindows(api.storage.session, map);
   }
 
-  async function refreshTabs(windowId) {
+  /** @returns {Promise<boolean>} whether the window just matched a stored fingerprint */
+  const refreshTabsLocked = (windowId) => exclusive(async () => {
     const map = await readWindows(api.storage.session);
     const entry = map[windowId];
-    if (!entry) return;
+    if (!entry) return false;
     const urls = urlsOf(await api.tabs.query({ windowId }));
-    if (urls.length === 0) return;
+    if (urls.length === 0) return false;
     if (entry.unmatched && (await inRestore())) {
       const state = await readState(api.storage.local);
       const claimed = new Set(Object.entries(map).filter(([id]) => id !== String(windowId)).map(([, e]) => e.printKey));
       const candidates = Object.fromEntries(Object.entries(state.prints).filter(([k]) => !claimed.has(k)));
       const key = matchWindows([{ id: windowId, urls }], candidates)[windowId];
-      if (key) {
-        map[windowId] = { focusId: validFocus(state, state.prints[key].focusId), printKey: key };
-        await writeWindows(api.storage.session, map);
-        await swapIfFocused(windowId);
-      }
-      return; // still restoring: don't overwrite anything yet
+      if (!key) return false; // still restoring: don't overwrite anything yet
+      map[windowId] = { focusId: validFocus(state, state.prints[key].focusId), printKey: key };
+      await writeWindows(api.storage.session, map);
+      return true;
     }
     await writePrint(windowId, urls);
+    return false;
+  });
+
+  async function refreshTabs(windowId) {
+    if (await refreshTabsLocked(windowId)) await swapIfFocused(windowId);
   }
 
   /** End of the restore period: windows that never matched start their own fingerprint. */
-  async function finishRestore() {
+  const finishRestore = () => exclusive(async () => {
     await api.storage.session.set({ restoreUntil: null });
     const map = await readWindows(api.storage.session);
     for (const [id, entry] of Object.entries(map)) {
@@ -108,53 +122,58 @@ export function createController(api, {
       const urls = urlsOf(await api.tabs.query({ windowId: Number(id) }));
       await writePrint(Number(id), urls);
     }
-  }
+  });
 
-  async function addWindow(win) {
+  const addWindow = (win) => exclusive(async () => {
     const state = await readState(api.storage.local);
     const map = await readWindows(api.storage.session);
     if (map[win.id]) return;
     map[win.id] = { focusId: state.activeId, printKey: uuid() };
     if (await inRestore()) map[win.id].unmatched = true;
     await writeWindows(api.storage.session, map);
-  }
+  });
 
   async function assign(windowId, focusId) {
-    const map = await readWindows(api.storage.session);
-    map[windowId] = { ...(map[windowId] ?? { printKey: uuid() }), focusId };
-    delete map[windowId].unmatched;
-    await writeWindows(api.storage.session, map);
-    const win = await getWindow(windowId);
-    await writePrint(windowId, urlsOf(win?.tabs));
+    await exclusive(async () => {
+      const map = await readWindows(api.storage.session);
+      map[windowId] = { ...(map[windowId] ?? { printKey: uuid() }), focusId };
+      delete map[windowId].unmatched;
+      await writeWindows(api.storage.session, map);
+      const win = await getWindow(windowId);
+      await writePrint(windowId, urlsOf(win?.tabs));
+    });
     await swapIfFocused(windowId);
   }
 
   return {
     /** Every service-worker load: repair folders, finish any interrupted swap. */
     async boot() {
-      await initialize(api);
+      await exclusive(() => initialize(api));
       await updateBadge();
     },
 
     /** Chrome start-up or install: give every open window its focus back. */
     async restoreWindows() {
-      const state = await readState(api.storage.local);
-      const wins = (await api.windows.getAll({ populate: true })).filter((w) => w.type === 'normal');
-      const matched = matchWindows(wins.map((w) => ({ id: w.id, urls: urlsOf(w.tabs) })), state.prints);
-      const map = {};
-      for (const w of wins) {
-        const key = matched[w.id];
-        map[w.id] = key
-          ? { focusId: validFocus(state, state.prints[key].focusId), printKey: key }
-          : { focusId: state.activeId, printKey: uuid(), unmatched: true };
-      }
-      await writeWindows(api.storage.session, map);
-      state.prints = prunePrints(state.prints, new Set(Object.values(matched)), now());
-      await writeState(api.storage.local, state);
-      await api.storage.session.set({ restoreUntil: now() + RESTORE_MS });
-      setTimer(finishRestore, RESTORE_MS);
-      const focused = wins.find((w) => w.focused);
-      if (focused) await switcher.request(map[focused.id].focusId);
+      const focusTo = await exclusive(async () => {
+        const state = await readState(api.storage.local);
+        const wins = (await api.windows.getAll({ populate: true })).filter((w) => w.type === 'normal');
+        const matched = matchWindows(wins.map((w) => ({ id: w.id, urls: urlsOf(w.tabs) })), state.prints);
+        const map = {};
+        for (const w of wins) {
+          const key = matched[w.id];
+          map[w.id] = key
+            ? { focusId: validFocus(state, state.prints[key].focusId), printKey: key }
+            : { focusId: state.activeId, printKey: uuid(), unmatched: true };
+        }
+        await writeWindows(api.storage.session, map);
+        state.prints = prunePrints(state.prints, new Set(Object.values(matched)), now());
+        await writeState(api.storage.local, state);
+        await api.storage.session.set({ restoreUntil: now() + RESTORE_MS });
+        const focused = wins.find((w) => w.focused);
+        return focused ? map[focused.id].focusId : null;
+      });
+      setTimer(() => finishRestore().catch((e) => console.error('Focus Bars: restore finish failed', e)), RESTORE_MS);
+      if (focusTo) await switcher.request(focusTo);
       await updateBadge();
     },
 
@@ -172,11 +191,11 @@ export function createController(api, {
       await addWindow(win);
     },
 
-    async onWindowRemoved(windowId) {
+    onWindowRemoved: (windowId) => exclusive(async () => {
       const map = await readWindows(api.storage.session);
       delete map[windowId];
       await writeWindows(api.storage.session, map);
-    },
+    }),
 
     /** Debounced per window. */
     onTabsChanged(windowId) {
@@ -191,7 +210,7 @@ export function createController(api, {
     assign,
 
     async onBookmarkEvent(kind, id, info) {
-      const r = await handleExternalChange(api, kind, id, info);
+      const r = await exclusive(() => handleExternalChange(api, kind, id, info));
       if (r.changed) await updateBadge();
       return r;
     },
@@ -213,7 +232,7 @@ export function createController(api, {
           await assign(msg.windowId, msg.focusId);
           return { ok: true };
         case 'create': {
-          const id = await createFocus(api, msg.name, { copyCurrent: !!msg.copyCurrent });
+          const id = await exclusive(() => createFocus(api, msg.name, { copyCurrent: !!msg.copyCurrent }));
           await assign(msg.windowId, id);
           return { id };
         }
@@ -221,15 +240,22 @@ export function createController(api, {
           await renameFocus(api, msg.focusId, msg.name);
           await updateBadge();
           return { ok: true };
-        case 'delete':
-          await deleteFocus(api, msg.focusId, (id) => switcher.request(id));
+        case 'delete': {
+          const state = await readState(api.storage.local);
+          if (state.activeId === msg.focusId) await switcher.request(state.generalId);
+          await exclusive(() => deleteFocus(api, msg.focusId, async () => {
+            throw new Error('Focus is still on the bar; try again');
+          }));
           await updateBadge();
           return { ok: true };
+        }
         case 'resolveRecovery': {
-          await resolveRecovery(api, msg.focusId);
-          const map = await readWindows(api.storage.session);
-          for (const e of Object.values(map)) e.focusId = msg.focusId;
-          await writeWindows(api.storage.session, map);
+          await exclusive(async () => {
+            await resolveRecovery(api, msg.focusId);
+            const map = await readWindows(api.storage.session);
+            for (const e of Object.values(map)) e.focusId = msg.focusId;
+            await writeWindows(api.storage.session, map);
+          });
           await updateBadge();
           return { ok: true };
         }
