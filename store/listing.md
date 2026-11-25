@@ -77,7 +77,9 @@ Shows a different set of bookmarks on Chrome's bookmark bar for each browser win
 - Leave every other category unticked.
 - Tick all three certifications: data isn't sold to third parties, isn't used for anything unrelated to the single purpose, and isn't used for creditworthiness or lending.
 
-**Privacy policy URL:** the public address of `PRIVACY.md`. See the hand-off notes for how to host it.
+**Privacy policy URL:** `https://gist.github.com/jeffdavidson/bb6506ef085663a50f1027a8d77b7766`
+
+This is a public gist copy of `PRIVACY.md`. If you change the policy, update the gist too with `gh gist edit bb6506ef085663a50f1027a8d77b7766 PRIVACY.md`.
 
 ---
 
