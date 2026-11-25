@@ -157,3 +157,17 @@ test('reinstall adopts a leftover switcher holding a user bookmark', async () =>
   const state = await initialize(api);
   assert.equal(state.switcherId, api._id('⇄ Dev'));
 });
+
+test('General missing at boot during a pending swap keeps the journal pointed at the new General', async () => {
+  const { api, generalId, devId } = await seeded();
+  await swapBar(api, devId);
+  api._failAfterMoves(1); // swap Dev → General dies after one move
+  await assert.rejects(swapBar(api, generalId));
+  await api.bookmarks.removeTree(generalId);
+  const state = await initialize(api);
+  assert.equal(state.journal, null);
+  assert.equal(state.activeId, state.generalId, 'finished onto the new General');
+  assert.ok(state.focusIds.includes(state.generalId));
+  assert.equal(api._id('Recovered focus'), undefined, 'no stray folder');
+  assert.deepEqual(api._titles(devId), ['x', 'y']);
+});

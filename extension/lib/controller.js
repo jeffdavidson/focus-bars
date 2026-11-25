@@ -10,7 +10,10 @@ export const RESTORE_MS = 60_000;
 export const DEBOUNCE_MS = 2_000;
 const NONE = -1;
 
-const urlsOf = (tabs) => [...new Set((tabs ?? []).map((t) => t.url || t.pendingUrl).filter(Boolean))];
+// Blank and New Tab pages say nothing about a window's topic, so they don't count.
+const BLANK = /^(about:blank|chrome:\/\/(newtab|new-tab-page)\/?)$/;
+const urlsOf = (tabs) => [...new Set((tabs ?? []).map((t) => t.url || t.pendingUrl).filter((u) => u && !BLANK.test(u)))];
+export const QUICK_GAP_MS = 500;
 const validFocus = (state, id) => (state.focusIds.includes(id) ? id : state.generalId);
 
 /**
@@ -29,6 +32,7 @@ export function createController(api, {
   clearTimer = (id) => clearTimeout(id),
 } = {}) {
   const debounces = new Map();
+  const lastQuick = new Map(); // windowId -> time of the last switch from the bar folder
 
   let tail = Promise.resolve();
   function exclusive(fn) {
@@ -253,6 +257,12 @@ export function createController(api, {
           };
         }
         case 'assign':
+          if (msg.quick) {
+            // "Open all" on the bar folder fires one switch per focus at once: keep the first.
+            const last = lastQuick.get(msg.windowId);
+            if (last != null && now() - last < QUICK_GAP_MS) return { ok: true, ignored: true };
+            lastQuick.set(msg.windowId, now());
+          }
           await assign(msg.windowId, msg.focusId, { fromPopup: true });
           return { ok: true };
         case 'create': {

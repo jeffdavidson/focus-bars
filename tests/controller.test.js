@@ -479,3 +479,35 @@ test('switcher dragged along the bar goes back to the front', async () => {
   assert.equal(api._titles('1')[0], '⇄ General');
   assert.notEqual((await readState(api.storage.local)).showSwitcher, false);
 });
+
+test('New Tab pages do not count in fingerprints', async () => {
+  const { api, ctl, devId, h } = await setup({
+    windows: [{ id: 1, focused: true, tabs: ['chrome://newtab/'] }, { id: 2, tabs: ['chrome://newtab/', 'about:blank'] }],
+  });
+  await seedPrints(api, { pDev: { urls: ['chrome://newtab/'], focusId: devId, lastSeen: h.now() } });
+  await ctl.boot();
+  await ctl.restoreWindows();
+  const map = await readWindows(api.storage.session);
+  assert.notEqual(map[1].focusId, devId);
+  assert.notEqual(map[2].focusId, devId);
+});
+
+test('several switches from the bar at once: the first wins', async () => {
+  const { api, ctl, h, devId, generalId, rootId } = await setup();
+  await ctl.boot();
+  await ctl.restoreWindows();
+  const music = await api.bookmarks.create({ parentId: rootId, title: 'Music' });
+  const st = await readState(api.storage.local);
+  st.focusIds.push(music.id);
+  await writeState(api.storage.local, st);
+  // "Open all" on the bar folder fires one switch per focus almost together
+  await Promise.all([
+    ctl.handleMessage({ type: 'assign', windowId: 1, focusId: devId, quick: true }),
+    ctl.handleMessage({ type: 'assign', windowId: 1, focusId: music.id, quick: true }),
+    ctl.handleMessage({ type: 'assign', windowId: 1, focusId: generalId, quick: true }),
+  ]);
+  assert.equal((await readWindows(api.storage.session))[1].focusId, devId);
+  h.advance(1_000);
+  await ctl.handleMessage({ type: 'assign', windowId: 1, focusId: generalId, quick: true });
+  assert.equal((await readWindows(api.storage.session))[1].focusId, generalId, 'a later pick still works');
+});

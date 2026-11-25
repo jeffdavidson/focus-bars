@@ -52,6 +52,10 @@ async function repair(api, state) {
     state.focusIds = state.focusIds.map((id) => (id === old ? general.id : id));
     if (!state.focusIds.includes(general.id)) state.focusIds.unshift(general.id);
     if (state.activeId === old) state.activeId = general.id;
+    if (state.journal) {
+      const swap = (id) => (id === old ? general.id : id);
+      state.journal = { ...state.journal, from: swap(state.journal.from), to: swap(state.journal.to) };
+    }
     state.generalId = general.id;
   }
 }

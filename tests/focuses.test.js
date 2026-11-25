@@ -225,3 +225,20 @@ test('own sync is not an external delete', async () => {
   }
   assert.notEqual((await readState(api.storage.local)).showSwitcher, false);
 });
+
+test('focus names are checked', async () => {
+  const { api, devId } = await seeded();
+  await assert.rejects(createFocus(api, '  ', { copyCurrent: false }), /name/i);
+  await assert.rejects(createFocus(api, 'Removed – Old', { copyCurrent: false }), /Removed/);
+  await assert.rejects(createFocus(api, 'general', { copyCurrent: false }), /already/);
+  await assert.rejects(renameFocus(api, devId, 'General'), /already/);
+  await renameFocus(api, devId, 'dev'); // same focus, different case: fine
+  const id = await createFocus(api, '  Music  ', { copyCurrent: false });
+  assert.equal((await api.bookmarks.get(id))[0].title, 'Music', 'trimmed');
+});
+
+test('listFocuses skips a focus folder that has just vanished', async () => {
+  const { api, generalId, devId } = await seeded();
+  await api.bookmarks.removeTree(devId); // its onRemoved not handled yet
+  assert.deepEqual(await listFocuses(api), [{ id: generalId, name: 'General' }]);
+});

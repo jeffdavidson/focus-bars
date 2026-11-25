@@ -1,4 +1,5 @@
 import { readState, writeState } from './store.js';
+import { getExisting } from './roots.js';
 
 export const SWITCHER_PREFIX = '⇄ ';
 export const SWITCH_MARK = '/switch.html?focus=';
@@ -64,7 +65,9 @@ export async function syncSwitcher(api) {
     return state;
   }
 
-  const names = new Map((await bookmarks.get(state.focusIds)).map((n) => [n.id, n.title]));
+  // A focus folder deleted moments ago is skipped until its onRemoved is handled.
+  const names = new Map((await getExisting(bookmarks, state.focusIds)).map((n) => [n.id, n.title]));
+  const focusIds = state.focusIds.filter((id) => names.has(id));
   const title = SWITCHER_PREFIX + (names.get(state.activeId) ?? '');
 
   if (!folder) {
@@ -79,7 +82,7 @@ export async function syncSwitcher(api) {
   if (folder.title !== title) await bookmarks.update(folder.id, { title });
 
   const links = (await bookmarks.getChildren(folder.id)).filter((n) => isSwitchLink(n.url));
-  for (const [i, id] of state.focusIds.entries()) {
+  for (const [i, id] of focusIds.entries()) {
     const want = {
       title: (id === state.activeId ? '✓ ' : '    ') + (names.get(id) ?? ''),
       url: api.runtime.getURL(`switch.html?focus=${encodeURIComponent(id)}`),
@@ -88,7 +91,7 @@ export async function syncSwitcher(api) {
     if (!have) await bookmarks.create({ parentId: folder.id, ...want });
     else if (have.title !== want.title || have.url !== want.url) await bookmarks.update(have.id, want);
   }
-  for (const extra of links.slice(state.focusIds.length)) await bookmarks.removeTree(extra.id);
+  for (const extra of links.slice(focusIds.length)) await bookmarks.removeTree(extra.id);
 
   await writeState(storage.local, state);
   return state;
