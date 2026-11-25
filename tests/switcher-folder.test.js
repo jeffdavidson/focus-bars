@@ -126,3 +126,11 @@ test('isSwitchLink matches any extension origin', () => {
   assert.equal(isSwitchLink('https://example.com/'), false);
   assert.equal(isSwitchLink(undefined), false);
 });
+
+test('a focus folder that vanished before its event is skipped, not fatal', async () => {
+  const { api, generalId, devId } = await seeded();
+  const { switcherId } = await syncSwitcher(api);
+  await api.bookmarks.removeTree(devId);
+  await syncSwitcher(api);
+  assert.deepEqual(await entries(api, switcherId), [['✓ General', link(generalId)]]);
+});

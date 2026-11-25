@@ -10,7 +10,10 @@ export const RESTORE_MS = 60_000;
 export const DEBOUNCE_MS = 2_000;
 const NONE = -1;
 
-const urlsOf = (tabs) => [...new Set((tabs ?? []).map((t) => t.url || t.pendingUrl).filter(Boolean))];
+// Blank and New Tab pages say nothing about a window's topic, so they don't count.
+const BLANK = /^(about:blank|chrome:\/\/(newtab|new-tab-page)\/?)$/;
+const urlsOf = (tabs) => [...new Set((tabs ?? []).map((t) => t.url || t.pendingUrl).filter((u) => u && !BLANK.test(u)))];
+export const QUICK_GAP_MS = 500;
 const validFocus = (state, id) => (state.focusIds.includes(id) ? id : state.generalId);
 
 /**
@@ -29,6 +32,7 @@ export function createController(api, {
   clearTimer = (id) => clearTimeout(id),
 } = {}) {
   const debounces = new Map();
+  const lastQuick = new Map(); // windowId -> time of the last switch from the bar folder
 
   let tail = Promise.resolve();
   function exclusive(fn) {
@@ -42,7 +46,12 @@ export function createController(api, {
     if (!state || state.needsRecovery) return;
     await swapBar(api, validFocus(state, focusId));
     await syncSwitcher(api);
-  }).then(updateBadge));
+  }).then(updateBadge, async (e) => {
+    // The bar didn't change; say so on the toolbar icon. The next good swap clears it.
+    await api.action.setBadgeText({ text: '!' });
+    await api.action.setTitle({ title: `Focus Bars: switch failed — ${e.message}` });
+    throw e;
+  }));
 
   /** Bring the bar's switcher folder and the badge up to date. */
   const refresh = () => exclusive(() => syncSwitcher(api)).then(updateBadge);
@@ -51,14 +60,19 @@ export function createController(api, {
     const state = await readState(api.storage.local);
     if (!state) return;
     let text = '?';
+    let title = 'Focus Bars: which focus is on the bar?';
     if (!state.needsRecovery) {
       try {
-        text = (await api.bookmarks.get(state.activeId))[0].title.slice(0, 4);
+        const name = (await api.bookmarks.get(state.activeId))[0].title;
+        text = name.slice(0, 4);
+        title = `Focus Bars: ${name}`;
       } catch {
         text = '';
+        title = 'Focus Bars';
       }
     }
     await api.action.setBadgeText({ text });
+    await api.action.setTitle({ title });
   }
 
   async function getWindow(windowId) {
@@ -253,6 +267,12 @@ export function createController(api, {
           };
         }
         case 'assign':
+          if (msg.quick) {
+            // "Open all" on the bar folder fires one switch per focus at once: keep the first.
+            const last = lastQuick.get(msg.windowId);
+            if (last != null && now() - last < QUICK_GAP_MS) return { ok: true, ignored: true };
+            lastQuick.set(msg.windowId, now());
+          }
           await assign(msg.windowId, msg.focusId, { fromPopup: true });
           return { ok: true };
         case 'create': {

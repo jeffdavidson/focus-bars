@@ -207,6 +207,7 @@ test('badge shows active focus', async () => {
   await ctl.restoreWindows();
   await ctl.assign(1, devId);
   assert.equal(api._badge(), 'Dev');
+  assert.equal(api._title(), 'Focus Bars: Dev', 'hover text names the focus (and clears any error)');
 });
 
 test('external bookmark change updates badge', async () => {
@@ -478,4 +479,57 @@ test('switcher dragged along the bar goes back to the front', async () => {
   await ctl.onBookmarkEvent('moved', switcherId, { parentId: '1', index: 2 });
   assert.equal(api._titles('1')[0], '⇄ General');
   assert.notEqual((await readState(api.storage.local)).showSwitcher, false);
+});
+
+test('New Tab pages do not count in fingerprints', async () => {
+  const { api, ctl, devId, h } = await setup({
+    windows: [{ id: 1, focused: true, tabs: ['chrome://newtab/'] }, { id: 2, tabs: ['chrome://newtab/', 'about:blank'] }],
+  });
+  await seedPrints(api, { pDev: { urls: ['chrome://newtab/'], focusId: devId, lastSeen: h.now() } });
+  await ctl.boot();
+  await ctl.restoreWindows();
+  const map = await readWindows(api.storage.session);
+  assert.notEqual(map[1].focusId, devId);
+  assert.notEqual(map[2].focusId, devId);
+});
+
+test('several switches from the bar at once: the first wins', async () => {
+  const { api, ctl, h, devId, generalId, rootId } = await setup();
+  await ctl.boot();
+  await ctl.restoreWindows();
+  const music = await api.bookmarks.create({ parentId: rootId, title: 'Music' });
+  const st = await readState(api.storage.local);
+  st.focusIds.push(music.id);
+  await writeState(api.storage.local, st);
+  // "Open all" on the bar folder fires one switch per focus almost together
+  await Promise.all([
+    ctl.handleMessage({ type: 'assign', windowId: 1, focusId: devId, quick: true }),
+    ctl.handleMessage({ type: 'assign', windowId: 1, focusId: music.id, quick: true }),
+    ctl.handleMessage({ type: 'assign', windowId: 1, focusId: generalId, quick: true }),
+  ]);
+  assert.equal((await readWindows(api.storage.session))[1].focusId, devId);
+  h.advance(1_000);
+  await ctl.handleMessage({ type: 'assign', windowId: 1, focusId: generalId, quick: true });
+  assert.equal((await readWindows(api.storage.session))[1].focusId, generalId, 'a later pick still works');
+});
+
+test('a swap that fails shows ! on the badge until the next good swap', async () => {
+  const { api, ctl, h, devId } = await setup();
+  await ctl.boot();
+  await ctl.restoreWindows();
+  const origError = console.error;
+  console.error = () => {};
+  try {
+    api._failAfterMoves(0); // the very first move throws; the bookmark still exists
+    await ctl.handleMessage({ type: 'assign', windowId: 1, focusId: devId, quick: true });
+  } finally {
+    console.error = origError;
+  }
+  assert.equal(api._badge(), '!');
+  assert.match(api._title(), /failed/);
+  h.advance(1_000);
+  await ctl.handleMessage({ type: 'assign', windowId: 1, focusId: devId, quick: true });
+  assert.equal(api._badge(), 'Dev');
+  assert.equal(api._title(), 'Focus Bars: Dev');
+  assert.deepEqual(api._titles('1'), ['x', 'y']);
 });

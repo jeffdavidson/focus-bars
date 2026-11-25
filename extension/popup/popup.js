@@ -120,6 +120,9 @@ function renderList() {
     const toggle = el('input', { type: 'checkbox', checked: view.showSwitcher !== false });
     toggle.addEventListener('change', () => act(() => send({ type: 'setShowSwitcher', value: toggle.checked })));
     parts.push(el('label', { className: 'setting' }, toggle, 'Show focus menu on bookmark bar'));
+    if (toggle.checked) {
+      parts.push(el('p', { className: 'hint', textContent: 'If you remove Focus Bars, delete the ⇄ folder from your bar by hand.' }));
+    }
   }
   app.replaceChildren(...parts);
 }

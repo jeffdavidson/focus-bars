@@ -1,12 +1,22 @@
-import { findRoots } from './roots.js';
+import { findRoots, getExisting } from './roots.js';
 import { readState, writeState, readWindows, writeWindows } from './store.js';
 import { ROOT_TITLE, GENERAL_TITLE, REMOVED_PREFIX, RECOVERED_TITLE } from './setup.js';
 
 /** @returns {Promise<{id: string, name: string}[]>} */
 export async function listFocuses(api) {
   const state = await readState(api.storage.local);
-  const nodes = await api.bookmarks.get(state.focusIds);
+  const nodes = await getExisting(api.bookmarks, state.focusIds);
   return nodes.map((n) => ({ id: n.id, name: n.title }));
+}
+
+/** Trim and check a focus name; throws a message the popup can show. */
+async function checkName(api, name, exceptId) {
+  const clean = String(name ?? '').trim();
+  if (!clean) throw new Error('Please enter a name.');
+  if (clean.startsWith(REMOVED_PREFIX)) throw new Error(`Names can't start with “${REMOVED_PREFIX.trim()}”.`);
+  const taken = (await listFocuses(api)).some((f) => f.id !== exceptId && f.name.toLowerCase() === clean.toLowerCase());
+  if (taken) throw new Error(`A focus called “${clean}” already exists.`);
+  return clean;
 }
 
 async function copyTree(bookmarks, fromId, toId, skipIds = []) {
@@ -23,6 +33,7 @@ async function copyTree(bookmarks, fromId, toId, skipIds = []) {
 
 /** @returns {Promise<string>} the new focus id */
 export async function createFocus(api, name, { copyCurrent }) {
+  name = await checkName(api, name);
   const state = await readState(api.storage.local);
   const folder = await api.bookmarks.create({ parentId: state.rootId, title: name });
   if (copyCurrent) await copyTree(api.bookmarks, state.barId, folder.id, [state.switcherId]);
@@ -32,7 +43,7 @@ export async function createFocus(api, name, { copyCurrent }) {
 }
 
 export async function renameFocus(api, focusId, name) {
-  await api.bookmarks.update(focusId, { title: name });
+  await api.bookmarks.update(focusId, { title: await checkName(api, name, focusId) });
 }
 
 /** Point every window and stored fingerprint using `fromId` at `toId`. */

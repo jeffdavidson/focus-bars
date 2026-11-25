@@ -103,3 +103,4 @@ footer:empty { display: none; }
   cursor: pointer;
 }
 .setting input { accent-color: var(--accent); margin: 0; }
+.hint { margin: 4px 0 0 22px; font-size: 11px; color: var(--muted); }
