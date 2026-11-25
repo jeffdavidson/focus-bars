@@ -1,9 +1,10 @@
-import { test } from 'node:test';
+import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { createFakeChrome } from './fake-chrome.js';
 
 test('background registers listeners and answers popup messages', async () => {
   const api = createFakeChrome({ bar: [{ title: 'a', url: 'https://a/' }], windows: [{ id: 1, focused: true, tabs: ['https://a/'] }] });
+  mock.timers.enable({ apis: ['setTimeout'] }); // don't leave the 60 s restore timer running
   globalThis.chrome = api;
   await import('../extension/background.js');
   const events = [
@@ -25,4 +26,5 @@ test('background registers listeners and answers popup messages', async () => {
   const bad = await new Promise((resolve) => api.runtime.onMessage._fire({ type: 'nope' }, {}, resolve));
   assert.equal(bad.ok, false);
   delete globalThis.chrome;
+  mock.timers.reset();
 });
