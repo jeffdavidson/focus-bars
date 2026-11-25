@@ -30,3 +30,11 @@ The user wants to change a window's focus from the bookmark bar itself, not only
   - turning the setting back on recreates it;
   - start-up recognises an existing switcher.
 - **A hands-on check in the throwaway profile:** pick focuses from the bar in two windows, and confirm the folder never appears inside **Focus Bars**.
+
+## Hands-on check (2026-11-25): passed
+The user ran the check in a throwaway profile:
+1. After a reinstall, the extension picked the right active focus (Dev) and created **⇄ Dev**.
+2. Picking a focus from the folder switched the bar, the label, the ✓ and the badge.
+3. With two windows and rapid switching, the folder stayed first and never appeared inside a focus folder.
+4. Unticking the popup checkbox removed the folder, and ticking it brought the folder back.
+5. Deleting the folder in the bookmark manager, then waiting for the worker to sleep: the folder stayed gone and the checkbox showed as unticked.
