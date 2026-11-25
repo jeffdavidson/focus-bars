@@ -11,7 +11,7 @@ test('background registers listeners and answers popup messages', async () => {
     api.runtime.onStartup, api.runtime.onInstalled, api.runtime.onMessage,
     api.windows.onFocusChanged, api.windows.onCreated, api.windows.onRemoved,
     api.tabs.onCreated, api.tabs.onUpdated, api.tabs.onRemoved, api.tabs.onAttached, api.tabs.onDetached,
-    api.bookmarks.onRemoved, api.bookmarks.onMoved, api.bookmarks.onChanged,
+    api.bookmarks.onRemoved, api.bookmarks.onMoved, api.bookmarks.onChanged, api.bookmarks.onCreated,
   ];
   for (const e of events) assert.ok(e._count() >= 1, 'listener registered');
   api.runtime.onInstalled._fire({ reason: 'install' });

@@ -2,7 +2,7 @@ import { readState, writeState, readWindows, writeWindows } from './store.js';
 import { swapBar } from './swap.js';
 import { createSwitcher } from './switcher.js';
 import { initialize, resolveRecovery } from './setup.js';
-import { listFocuses, createFocus, renameFocus, deleteFocus, handleExternalChange } from './focuses.js';
+import { listFocuses, createFocus, renameFocus, deleteFocus, handleExternalChange, drainActiveFolder } from './focuses.js';
 import { matchWindows, prunePrints } from './fingerprint.js';
 import { syncSwitcher } from './switcher-folder.js';
 
@@ -174,7 +174,10 @@ export function createController(api, {
   return {
     /** Every service-worker load: repair folders, finish any interrupted swap. */
     async boot() {
-      await exclusive(() => initialize(api));
+      await exclusive(async () => {
+        await initialize(api);
+        await drainActiveFolder(api); // anything added to the active focus's folder while asleep
+      });
       // The restore-end timer dies with the worker; finish the period on the next wake instead.
       const { restoreUntil } = await api.storage.session.get('restoreUntil');
       if (restoreUntil != null && now() >= restoreUntil) await finishRestore();
@@ -244,7 +247,18 @@ export function createController(api, {
     assign,
 
     async onBookmarkEvent(kind, id, info) {
-      const r = await exclusive(() => handleExternalChange(api, kind, id, info));
+      const r = await exclusive(async () => {
+        const ext = await handleExternalChange(api, kind, id, info);
+        const drained = await drainActiveFolder(api);
+        return { changed: ext.changed || drained.changed };
+      });
+      if (r.changed) await refresh();
+      return r;
+    },
+
+    /** A new bookmark: if it landed in the active focus's folder, put it on the bar. */
+    async onBookmarkCreated() {
+      const r = await exclusive(() => drainActiveFolder(api));
       if (r.changed) await refresh();
       return r;
     },
