@@ -133,3 +133,17 @@ The bar keeps whatever focus was last active, and every other focus stays in `Ot
 - The details of matching windows after a restart.
 - Popup styling.
 - Tests. Pure logic, such as queue coalescing, journal recovery and fingerprint matching, should be unit-tested with a stubbed `chrome.bookmarks`. The real swap is checked by hand in Chrome.
+
+## Manual check (2026-11-25): passed
+
+The user ran the plan's Task 8 checklist in a throwaway Chrome profile with sync off. Every step behaved as described:
+
+1. The extension loaded, the badge showed "Gene", and the bar was unchanged.
+2. Creating "Dev" emptied the bar and the badge showed "Dev".
+3. Two windows each kept their own focus, and the bar followed the active window.
+4. After rapid switching, the bar matched the window the user stopped in, and the folders were intact.
+5. After quitting and reopening Chrome, both windows got their focus back.
+6. Deleting the active focus's folder in the bookmark manager: the folder was recreated, and the bar kept its bookmarks.
+7. Deleting a focus from the popup: the `confirm()` prompt appeared, and the bookmarks were kept in "Removed – Dev".
+
+Observed and expected: because Chrome has one shared bar, changing the focus also changes what a background window's bar shows. Each window still keeps its own focus.
