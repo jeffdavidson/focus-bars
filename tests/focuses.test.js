@@ -183,6 +183,7 @@ test('user deleting the switcher turns it off', async () => {
   await api.bookmarks.removeTree(switcherId);
   const r = await handleExternalChange(api, 'removed', switcherId, { parentId: '1', index: 0 });
   assert.equal(r.changed, true);
+  await syncSwitcher(api); // the controller refreshes after a change
   const state = await readState(api.storage.local);
   assert.equal(state.showSwitcher, false);
   assert.equal(state.switcherId, null);
@@ -195,6 +196,7 @@ test('user moving the switcher off the bar turns it off', async () => {
   await api.bookmarks.move(switcherId, { parentId: '2' });
   const r = await handleExternalChange(api, 'moved', switcherId, { parentId: '2', index: 1 });
   assert.equal(r.changed, true);
+  await syncSwitcher(api); // the controller refreshes after a change
   assert.equal((await readState(api.storage.local)).showSwitcher, false);
 });
 

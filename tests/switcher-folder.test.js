@@ -74,13 +74,34 @@ test('moves the folder back to index 0', async () => {
   assert.equal(api._titles('1')[0], '⇄ General');
 });
 
-test('recreates the folder if it is gone but the setting is on', async () => {
+test('a tracked folder that vanished counts as turned off', async () => {
   const { api } = await seeded();
   const { switcherId } = await syncSwitcher(api);
   await api.bookmarks.removeTree(switcherId);
   const state = await syncSwitcher(api);
-  assert.notEqual(state.switcherId, switcherId);
-  assert.equal(api._titles('1')[0], '⇄ General');
+  assert.equal(state.showSwitcher, false);
+  assert.equal(state.switcherId, null);
+  assert.deepEqual(api._titles('1'), ['a', 'b', 'c']);
+});
+
+test('a tracked folder moved off the bar is left there and turned off', async () => {
+  const { api } = await seeded();
+  const { switcherId } = await syncSwitcher(api);
+  await api.bookmarks.move(switcherId, { parentId: '2' });
+  const state = await syncSwitcher(api);
+  assert.equal(state.showSwitcher, false);
+  assert.equal(state.switcherId, null);
+  assert.ok(api._titles('2').includes('⇄ General'), 'not pulled back');
+  assert.deepEqual(api._titles('1'), ['a', 'b', 'c']);
+});
+
+test('adopts an untracked switcher instead of creating a second', async () => {
+  const { api } = await seeded();
+  const { switcherId } = await syncSwitcher(api);
+  await patch(api, { switcherId: null }); // crash between create and save
+  const state = await syncSwitcher(api);
+  assert.equal(state.switcherId, switcherId);
+  assert.deepEqual(api._titles('1').filter((t) => t.startsWith('⇄')), ['⇄ General']);
 });
 
 test('showSwitcher false removes the folder', async () => {

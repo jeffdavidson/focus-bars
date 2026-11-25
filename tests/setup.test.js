@@ -151,3 +151,9 @@ test('a folder of ordinary bookmarks named ⇄ is not adopted', async () => {
   const state = await initialize(api);
   assert.equal(state.switcherId, null);
 });
+
+test('reinstall adopts a leftover switcher holding a user bookmark', async () => {
+  const api = createFakeChrome({ bar: [{ title: '⇄ Dev', children: [oldLink(9), bm('mine')] }, bm('a')] });
+  const state = await initialize(api);
+  assert.equal(state.switcherId, api._id('⇄ Dev'));
+});

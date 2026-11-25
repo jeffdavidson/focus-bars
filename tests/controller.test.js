@@ -428,3 +428,54 @@ test('create, rename and delete refresh the switcher', async () => {
   const { switcherId } = await readState(api.storage.local);
   assert.equal(api._titles(switcherId).length, 2, 'General and Dev entries');
 });
+
+test('with the switcher on, swaps keep it first and out of focus folders', async () => {
+  const { api, ctl, devId, generalId } = await setup({ switcher: true });
+  await ctl.boot();
+  await ctl.restoreWindows();
+  await ctl.assign(1, devId);
+  assert.deepEqual(api._titles('1'), ['⇄ Dev', 'x', 'y']);
+  assert.deepEqual(api._titles(generalId), ['a', 'b', 'c']);
+  await ctl.assign(1, generalId);
+  assert.deepEqual(api._titles('1'), ['⇄ General', 'a', 'b', 'c']);
+  assert.deepEqual(api._titles(devId), ['x', 'y']);
+});
+
+test('switcher moved off the bar while the worker slept is left there and never filed into a focus', async () => {
+  const { api, ctl, h, devId, generalId } = await setup({ switcher: true });
+  await ctl.boot();
+  await ctl.restoreWindows();
+  const { switcherId } = await readState(api.storage.local);
+  await api.bookmarks.move(switcherId, { parentId: '2' });
+  const woke = createController(api, h); // Chrome wakes the worker for the event: boot runs first
+  await woke.boot();
+  await woke.onBookmarkEvent('moved', switcherId, { parentId: '2', index: 1, oldParentId: '1', oldIndex: 0 });
+  await woke.assign(1, devId);
+  const state = await readState(api.storage.local);
+  assert.equal(state.showSwitcher, false);
+  assert.ok(api._titles('2').includes('⇄ General'), 'stays where the user put it');
+  assert.ok(!api._titles(generalId).some((t) => t.startsWith('⇄')), 'not filed into General');
+  assert.deepEqual(api._titles('1'), ['x', 'y']);
+});
+
+test('switcher deleted while the worker slept stays gone', async () => {
+  const { api, ctl, h } = await setup({ switcher: true });
+  await ctl.boot();
+  const { switcherId } = await readState(api.storage.local);
+  await api.bookmarks.removeTree(switcherId);
+  const woke = createController(api, h);
+  await woke.boot();
+  await woke.onBookmarkEvent('removed', switcherId, { parentId: '1', index: 0 });
+  assert.deepEqual(api._titles('1'), ['a', 'b', 'c']);
+  assert.equal((await readState(api.storage.local)).showSwitcher, false);
+});
+
+test('switcher dragged along the bar goes back to the front', async () => {
+  const { api, ctl } = await setup({ switcher: true });
+  await ctl.boot();
+  const { switcherId } = await readState(api.storage.local);
+  await api.bookmarks.move(switcherId, { parentId: '1', index: 2 });
+  await ctl.onBookmarkEvent('moved', switcherId, { parentId: '1', index: 2 });
+  assert.equal(api._titles('1')[0], '⇄ General');
+  assert.notEqual((await readState(api.storage.local)).showSwitcher, false);
+});

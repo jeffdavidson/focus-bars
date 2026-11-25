@@ -16,9 +16,27 @@ async function getOrNull(bookmarks, id) {
 }
 
 /**
+ * A switcher folder nobody is tracking — left by an earlier install, or by a
+ * crash between creating it and saving its id: first on the bar, a "⇄ " title,
+ * and at least one switch link (the user may have dropped their own items in).
+ * @returns {Promise<string|null>}
+ */
+export async function findStaleSwitcher(bookmarks, barId) {
+  const [first] = await bookmarks.getChildren(barId);
+  if (!first || first.url !== undefined || !first.title.startsWith(SWITCHER_PREFIX)) return null;
+  const kids = await bookmarks.getChildren(first.id);
+  return kids.some((k) => isSwitchLink(k.url)) ? first.id : null;
+}
+
+/**
  * Keep the "⇄ <focus>" folder first on the bookmark bar, with one entry per
- * focus. Reconciled in place: the folder keeps its id, entries are updated,
- * added or removed, and anything else the user dropped in is left alone.
+ * focus. Decides from the bookmark tree as it is now, never from the order
+ * events arrived in (a sleeping service worker sees them late):
+ * - the tracked folder is gone, or no longer on the bar → the user removed it:
+ *   turn the setting off and leave whatever they did alone;
+ * - nothing tracked and the setting is on → adopt a leftover switcher, else create one.
+ * Reconciled in place: the folder keeps its id, entries are updated, added or
+ * removed, and anything else the user dropped in is left alone.
  * @returns {Promise<import('./store.js').State>}
  */
 export async function syncSwitcher(api) {
@@ -28,12 +46,21 @@ export async function syncSwitcher(api) {
 
   let folder = await getOrNull(bookmarks, state.switcherId);
 
+  if (state.switcherId && (!folder || folder.parentId !== state.barId)) {
+    state.switcherId = null;
+    state.showSwitcher = false;
+    await writeState(storage.local, state);
+    return state;
+  }
+
   if (state.showSwitcher === false) {
-    if (state.switcherId !== null && state.switcherId !== undefined) {
-      state.switcherId = null; // written first so our own onRemoved is not mistaken for the user's
+    if (folder) {
+      // Remove first, then forget it: a crash in between leaves a tracked id
+      // with no folder, which the next sync reads as "off" — the right answer.
+      await bookmarks.removeTree(folder.id);
+      state.switcherId = null;
       await writeState(storage.local, state);
     }
-    if (folder) await bookmarks.removeTree(folder.id);
     return state;
   }
 
@@ -41,15 +68,15 @@ export async function syncSwitcher(api) {
   const title = SWITCHER_PREFIX + (names.get(state.activeId) ?? '');
 
   if (!folder) {
-    folder = await bookmarks.create({ parentId: state.barId, index: 0, title });
+    const staleId = await findStaleSwitcher(bookmarks, state.barId);
+    folder = staleId
+      ? (await bookmarks.get(staleId))[0]
+      : await bookmarks.create({ parentId: state.barId, index: 0, title });
     state.switcherId = folder.id;
     await writeState(storage.local, state);
-  } else {
-    if (folder.parentId !== state.barId || folder.index !== 0) {
-      await bookmarks.move(folder.id, { parentId: state.barId, index: 0 });
-    }
-    if (folder.title !== title) await bookmarks.update(folder.id, { title });
   }
+  if (folder.index !== 0) await bookmarks.move(folder.id, { parentId: state.barId, index: 0 });
+  if (folder.title !== title) await bookmarks.update(folder.id, { title });
 
   const links = (await bookmarks.getChildren(folder.id)).filter((n) => isSwitchLink(n.url));
   for (const [i, id] of state.focusIds.entries()) {
@@ -63,7 +90,6 @@ export async function syncSwitcher(api) {
   }
   for (const extra of links.slice(state.focusIds.length)) await bookmarks.removeTree(extra.id);
 
-  state.switcherId = folder.id;
   await writeState(storage.local, state);
   return state;
 }

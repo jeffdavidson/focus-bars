@@ -1,7 +1,7 @@
 import { findRoots } from './roots.js';
 import { readState, writeState } from './store.js';
 import { recoverJournal } from './swap.js';
-import { SWITCHER_PREFIX, isSwitchLink } from './switcher-folder.js';
+import { findStaleSwitcher } from './switcher-folder.js';
 
 export const ROOT_TITLE = 'Focus Bars';
 export const GENERAL_TITLE = 'General';
@@ -23,13 +23,6 @@ function freshState({ barId, rootId, generalId, focusIds, activeId, needsRecover
   return { version: 1, barId, rootId, generalId, focusIds, activeId, journal: null, needsRecovery, prints: {}, lastSwapMs: null, switcherId, showSwitcher: true };
 }
 
-/** A switcher folder left on the bar by an earlier install: first on the bar, "⇄ " title, only switch links. */
-export async function findStaleSwitcher(bookmarks, barId) {
-  const [first] = await bookmarks.getChildren(barId);
-  if (!first || !isFolder(first) || !first.title.startsWith(SWITCHER_PREFIX)) return null;
-  const kids = await bookmarks.getChildren(first.id);
-  return kids.length > 0 && kids.every((k) => isSwitchLink(k.url)) ? first.id : null;
-}
 
 /** Make sure the container and General folder exist; repair state ids in place. */
 async function repair(api, state) {
