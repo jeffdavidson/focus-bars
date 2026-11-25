@@ -25,8 +25,14 @@ function harness(startAt = 1_000_000) {
   };
 }
 
-async function setup({ windows } = {}) {
+async function setup({ windows, switcher = false } = {}) {
   const s = await seeded({ windows: windows ?? [{ id: 1, focused: true, tabs: ['https://g/1'] }, { id: 2, tabs: ['https://m/1'] }] });
+  if (!switcher) {
+    // Most tests check exact bar contents; the bar switcher gets its own tests below.
+    const st = await readState(s.api.storage.local);
+    st.showSwitcher = false;
+    await writeState(s.api.storage.local, st);
+  }
   const h = harness();
   const ctl = createController(s.api, h);
   return { ...s, h, ctl };
@@ -342,4 +348,83 @@ test('restore period finishes on next wake if its timer was lost', async () => {
   const prints = (await readState(api.storage.local)).prints;
   assert.equal(map[1].unmatched, undefined);
   assert.deepEqual(prints[map[1].printKey].urls, ['https://g/1']);
+});
+
+const swTitle = async (api) => {
+  const { switcherId } = await readState(api.storage.local);
+  return switcherId ? (await api.bookmarks.get(switcherId))[0].title : null;
+};
+
+test('switcher appears after boot', async () => {
+  const { api, ctl } = await setup({ switcher: true });
+  await ctl.boot();
+  assert.equal(api._titles('1')[0], '⇄ General');
+});
+
+test('switcher label follows window focus', async () => {
+  const { api, ctl, devId } = await setup({ switcher: true });
+  await ctl.boot();
+  await ctl.restoreWindows();
+  await ctl.assign(2, devId);
+  await ctl.onFocusChanged(2);
+  assert.equal(await swTitle(api), '⇄ Dev');
+  assert.deepEqual(api._titles('1'), ['⇄ Dev', 'x', 'y']);
+  await ctl.onFocusChanged(1);
+  assert.equal(await swTitle(api), '⇄ General');
+});
+
+test('renaming a focus folder in the manager updates the switcher', async () => {
+  const { api, ctl, generalId } = await setup({ switcher: true });
+  await ctl.boot();
+  await api.bookmarks.update(generalId, { title: 'Home' });
+  await ctl.onBookmarkChanged(generalId);
+  assert.equal(await swTitle(api), '⇄ Home');
+});
+
+test('stale switch link falls back to General', async () => {
+  const { api, ctl, generalId } = await setup({ switcher: true });
+  await ctl.boot();
+  await ctl.restoreWindows();
+  await ctl.handleMessage({ type: 'assign', windowId: 1, focusId: 'no-such-focus' });
+  assert.equal((await readWindows(api.storage.session))[1].focusId, generalId);
+});
+
+test('setShowSwitcher toggles the folder', async () => {
+  const { api, ctl } = await setup({ switcher: true });
+  await ctl.boot();
+  await ctl.handleMessage({ type: 'setShowSwitcher', value: false });
+  assert.deepEqual(api._titles('1'), ['a', 'b', 'c']);
+  assert.equal((await ctl.handleMessage({ type: 'get', windowId: 1 })).showSwitcher, false);
+  await ctl.handleMessage({ type: 'setShowSwitcher', value: true });
+  assert.equal(api._titles('1')[0], '⇄ General');
+});
+
+test('get reports showSwitcher', async () => {
+  const { ctl } = await setup({ switcher: true });
+  await ctl.boot();
+  assert.equal((await ctl.handleMessage({ type: 'get', windowId: 1 })).showSwitcher, true);
+});
+
+test('user deleting the switcher keeps it gone', async () => {
+  const { api, ctl } = await setup({ switcher: true });
+  await ctl.boot();
+  const { switcherId } = await readState(api.storage.local);
+  await api.bookmarks.removeTree(switcherId);
+  await ctl.onBookmarkEvent('removed', switcherId, { parentId: '1', index: 0 });
+  await ctl.boot();
+  assert.deepEqual(api._titles('1'), ['a', 'b', 'c']);
+});
+
+test('create, rename and delete refresh the switcher', async () => {
+  const { api, ctl } = await setup({ switcher: true });
+  await ctl.boot();
+  await ctl.restoreWindows();
+  const { id } = await ctl.handleMessage({ type: 'create', windowId: 1, name: 'Music', copyCurrent: false });
+  assert.equal(await swTitle(api), '⇄ Music');
+  await ctl.handleMessage({ type: 'rename', focusId: id, name: 'Tunes' });
+  assert.equal(await swTitle(api), '⇄ Tunes');
+  await ctl.handleMessage({ type: 'delete', focusId: id });
+  assert.equal(await swTitle(api), '⇄ General');
+  const { switcherId } = await readState(api.storage.local);
+  assert.equal(api._titles(switcherId).length, 2, 'General and Dev entries');
 });

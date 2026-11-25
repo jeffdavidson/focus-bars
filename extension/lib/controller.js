@@ -4,6 +4,7 @@ import { createSwitcher } from './switcher.js';
 import { initialize, resolveRecovery } from './setup.js';
 import { listFocuses, createFocus, renameFocus, deleteFocus, handleExternalChange } from './focuses.js';
 import { matchWindows, prunePrints } from './fingerprint.js';
+import { syncSwitcher } from './switcher-folder.js';
 
 export const RESTORE_MS = 60_000;
 export const DEBOUNCE_MS = 2_000;
@@ -40,7 +41,11 @@ export function createController(api, {
     const state = await readState(api.storage.local);
     if (!state || state.needsRecovery) return;
     await swapBar(api, validFocus(state, focusId));
+    await syncSwitcher(api);
   }).then(updateBadge));
+
+  /** Bring the bar's switcher folder and the badge up to date. */
+  const refresh = () => exclusive(() => syncSwitcher(api)).then(updateBadge);
 
   async function updateBadge() {
     const state = await readState(api.storage.local);
@@ -135,13 +140,15 @@ export function createController(api, {
 
   /** @param {{fromPopup?: boolean}} opts  the popup belongs to the window, so always swap */
   async function assign(windowId, focusId, { fromPopup = false } = {}) {
-    await exclusive(async () => {
+    focusId = await exclusive(async () => {
+      focusId = validFocus(await readState(api.storage.local), focusId); // stale switch links fall back to General
       const map = await readWindows(api.storage.session);
       map[windowId] = { ...(map[windowId] ?? { printKey: uuid() }), focusId };
       delete map[windowId].unmatched;
       await writeWindows(api.storage.session, map);
       const win = await getWindow(windowId);
       await writePrint(windowId, urlsOf(win?.tabs));
+      return focusId;
     });
     if (fromPopup) await switcher.request(focusId);
     else await swapIfFocused(windowId);
@@ -154,7 +161,7 @@ export function createController(api, {
       // The restore-end timer dies with the worker; finish the period on the next wake instead.
       const { restoreUntil } = await api.storage.session.get('restoreUntil');
       if (restoreUntil != null && now() >= restoreUntil) await finishRestore();
-      await updateBadge();
+      await refresh();
     },
 
     /** Chrome start-up or install: give every open window its focus back. */
@@ -221,8 +228,14 @@ export function createController(api, {
 
     async onBookmarkEvent(kind, id, info) {
       const r = await exclusive(() => handleExternalChange(api, kind, id, info));
-      if (r.changed) await updateBadge();
+      if (r.changed) await refresh();
       return r;
+    },
+
+    /** A bookmark's title or URL changed: a renamed focus folder needs a fresh switcher label. */
+    async onBookmarkChanged(id) {
+      const state = await readState(api.storage.local);
+      if (state?.focusIds.includes(id)) await refresh();
     },
 
     async handleMessage(msg) {
@@ -236,6 +249,7 @@ export function createController(api, {
             generalId: state.generalId,
             needsRecovery: state.needsRecovery,
             lastSwapMs: state.lastSwapMs,
+            showSwitcher: state.showSwitcher !== false,
           };
         }
         case 'assign':
@@ -248,7 +262,7 @@ export function createController(api, {
         }
         case 'rename':
           await renameFocus(api, msg.focusId, msg.name);
-          await updateBadge();
+          await refresh();
           return { ok: true };
         case 'delete': {
           const state = await readState(api.storage.local);
@@ -256,7 +270,7 @@ export function createController(api, {
           await exclusive(() => deleteFocus(api, msg.focusId, async () => {
             throw new Error('Focus is still on the bar; try again');
           }));
-          await updateBadge();
+          await refresh();
           return { ok: true };
         }
         case 'resolveRecovery': {
@@ -266,9 +280,17 @@ export function createController(api, {
             for (const e of Object.values(map)) e.focusId = msg.focusId;
             await writeWindows(api.storage.session, map);
           });
-          await updateBadge();
+          await refresh();
           return { ok: true };
         }
+        case 'setShowSwitcher':
+          await exclusive(async () => {
+            const state = await readState(api.storage.local);
+            state.showSwitcher = !!msg.value;
+            await writeState(api.storage.local, state);
+          });
+          await refresh();
+          return { ok: true };
         default:
           throw new Error(`Unknown message: ${msg.type}`);
       }
