@@ -533,3 +533,66 @@ test('a swap that fails shows ! on the badge until the next good swap', async ()
   assert.equal(api._title(), 'Focus Bars: Dev');
   assert.deepEqual(api._titles('1'), ['x', 'y']);
 });
+
+async function withMusic(api, rootId) {
+  const music = await api.bookmarks.create({ parentId: rootId, title: 'Music' });
+  const st = await readState(api.storage.local);
+  st.focusIds.push(music.id);
+  await writeState(api.storage.local, st);
+  return music.id;
+}
+
+test('next-focus steps through focuses in menu order and wraps', async () => {
+  const { api, ctl, rootId, generalId, devId } = await setup();
+  await ctl.boot();
+  await ctl.restoreWindows();
+  const music = await withMusic(api, rootId);
+  const focusOf1 = async () => (await readWindows(api.storage.session))[1].focusId;
+  await ctl.onCommand('next-focus', { windowId: 1 });
+  assert.equal(await focusOf1(), devId);
+  assert.deepEqual(api._titles('1'), ['x', 'y']);
+  await ctl.onCommand('next-focus', { windowId: 1 });
+  assert.equal(await focusOf1(), music);
+  await ctl.onCommand('next-focus', { windowId: 1 });
+  assert.equal(await focusOf1(), generalId);
+  assert.deepEqual(api._titles('1'), ['a', 'b', 'c']);
+});
+
+test('previous-focus wraps from the first to the last', async () => {
+  const { api, ctl, rootId } = await setup();
+  await ctl.boot();
+  await ctl.restoreWindows();
+  const music = await withMusic(api, rootId);
+  await ctl.onCommand('previous-focus', { windowId: 1 });
+  assert.equal((await readWindows(api.storage.session))[1].focusId, music);
+  assert.equal(api._badge(), 'Musi');
+});
+
+test('a shortcut with no tab acts on the focused window', async () => {
+  const { api, ctl, devId } = await setup();
+  await ctl.boot();
+  await ctl.restoreWindows();
+  await ctl.onCommand('next-focus', undefined);
+  assert.equal((await readWindows(api.storage.session))[1].focusId, devId);
+});
+
+test('shortcuts do nothing while asking which focus is on the bar', async () => {
+  const { api, ctl } = await setup();
+  const st = await readState(api.storage.local);
+  st.needsRecovery = true;
+  await writeState(api.storage.local, st);
+  await ctl.boot();
+  await ctl.restoreWindows();
+  const before = await readWindows(api.storage.session);
+  await ctl.onCommand('next-focus', { windowId: 1 });
+  assert.deepEqual(await readWindows(api.storage.session), before);
+  assert.deepEqual(api._titles('1'), ['a', 'b', 'c']);
+});
+
+test('unknown commands are ignored', async () => {
+  const { api, ctl } = await setup();
+  await ctl.boot();
+  await ctl.restoreWindows();
+  await ctl.onCommand('something-else', { windowId: 1 });
+  assert.deepEqual(api._titles('1'), ['a', 'b', 'c']);
+});

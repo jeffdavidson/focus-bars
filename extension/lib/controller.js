@@ -252,6 +252,25 @@ export function createController(api, {
       if (state?.focusIds.includes(id)) await refresh();
     },
 
+    /** Keyboard shortcuts: step this window's focus forward or back through the menu order. */
+    async onCommand(command, tab) {
+      const step = { 'next-focus': 1, 'previous-focus': -1 }[command];
+      if (!step) return;
+      const state = await readState(api.storage.local);
+      if (!state || state.needsRecovery) return;
+      let windowId = tab?.windowId;
+      if (windowId == null) {
+        windowId = (await api.windows.getAll()).find((w) => w.focused && w.type === 'normal')?.id;
+      }
+      if (windowId == null) return;
+      const ids = (await listFocuses(api)).map((f) => f.id);
+      if (ids.length < 2) return;
+      const current = (await readWindows(api.storage.session))[windowId]?.focusId ?? state.activeId;
+      const i = ids.indexOf(current);
+      const next = i < 0 ? ids[step > 0 ? 0 : ids.length - 1] : ids[(i + step + ids.length) % ids.length];
+      await assign(windowId, next, { fromPopup: true });
+    },
+
     async handleMessage(msg) {
       switch (msg.type) {
         case 'get': {

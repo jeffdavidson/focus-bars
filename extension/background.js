@@ -36,6 +36,8 @@ chrome.bookmarks.onRemoved.addListener(run((id, info) => ctl.onBookmarkEvent('re
 chrome.bookmarks.onMoved.addListener(run((id, info) => ctl.onBookmarkEvent('moved', id, info)));
 chrome.bookmarks.onChanged.addListener(run((id) => ctl.onBookmarkChanged(id)));
 
+chrome.commands.onCommand.addListener(run((command, tab) => ctl.onCommand(command, tab)));
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.quick) {
     // From the bar's switch page: acknowledge at once so the tab can go back, then do the work.
