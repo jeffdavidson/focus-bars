@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Focus Bars",
+  "version": "0.1.0",
+  "description": "A different bookmark bar for each window's focus.",
+  "permissions": ["bookmarks", "storage", "tabs"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": {
+    "default_title": "Focus Bars",
+    "default_popup": "popup/popup.html",
+    "default_icon": { "16": "icons/16.png", "48": "icons/48.png", "128": "icons/128.png" }
+  },
+  "icons": { "16": "icons/16.png", "48": "icons/48.png", "128": "icons/128.png" }
+}

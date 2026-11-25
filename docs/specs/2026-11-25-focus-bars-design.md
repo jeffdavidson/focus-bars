@@ -123,7 +123,7 @@ The bar keeps whatever focus was last active, and every other focus stays in `Ot
 
 ## Known risks
 
-- **Flicker or slowness on swap.** Each bookmark is a separate API move, and the bar redraws as they happen. **The first build step is a throwaway test** that swaps two bars of about 30 bookmarks back and forth on window focus. It checks how long a swap takes and how it looks before anything else is built. **Pass:** a 30-bookmark swap finishes in under about 300 ms, and the bar looks like it changes in one go, not item by item. *(My call on the numbers.)* If it fails, stop and come back to the user with what was measured. Any fallback, such as nesting each focus inside one folder on the bar, changes the "native bar" goal, so it's the user's decision.
+- **Flicker or slowness on swap.** Each bookmark is a separate API move, and the bar redraws as they happen. **The first build step is a throwaway test** that swaps two bars of about 30 bookmarks back and forth on window focus. It checks how long a swap takes and how it looks before anything else is built. **Pass:** a 30-bookmark swap finishes in under about 300 ms, and the bar looks like it changes in one go, not item by item. *(My call on the numbers.)* **Spike result (2026-11-25): passed.** The user ran it in a throwaway profile with a 30-bookmark bar and reported that swaps look fast. Exact milliseconds were not recorded. If it fails, stop and come back to the user with what was measured. Any fallback, such as nesting each focus inside one folder on the bar, changes the "native bar" goal, so it's the user's decision.
 - **Sync.** With bookmark sync on, each swap is synced to the user's other devices. Running the extension on two synced devices at once would make them fight over the bar. For now this is documented: use it on one device, or turn off bookmark sync there.
 - **Editing during a swap.** If the user drags a bookmark onto the bar while a swap is moving items, it could land in the wrong focus. Swaps take a moment, so this is accepted.
 
@@ -133,3 +133,17 @@ The bar keeps whatever focus was last active, and every other focus stays in `Ot
 - The details of matching windows after a restart.
 - Popup styling.
 - Tests. Pure logic, such as queue coalescing, journal recovery and fingerprint matching, should be unit-tested with a stubbed `chrome.bookmarks`. The real swap is checked by hand in Chrome.
+
+## Manual check (2026-11-25): passed
+
+The user ran the plan's Task 8 checklist in a throwaway Chrome profile with sync off. Every step behaved as described:
+
+1. The extension loaded, the badge showed "Gene", and the bar was unchanged.
+2. Creating "Dev" emptied the bar and the badge showed "Dev".
+3. Two windows each kept their own focus, and the bar followed the active window.
+4. After rapid switching, the bar matched the window the user stopped in, and the folders were intact.
+5. After quitting and reopening Chrome, both windows got their focus back.
+6. Deleting the active focus's folder in the bookmark manager: the folder was recreated, and the bar kept its bookmarks.
+7. Deleting a focus from the popup: the `confirm()` prompt appeared, and the bookmarks were kept in "Removed – Dev".
+
+Observed and expected: because Chrome has one shared bar, changing the focus also changes what a background window's bar shows. Each window still keeps its own focus.
