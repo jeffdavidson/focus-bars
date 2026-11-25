@@ -117,6 +117,9 @@ function renderList() {
       actions.append(del);
     }
     parts.push(actions);
+    const toggle = el('input', { type: 'checkbox', checked: view.showSwitcher !== false });
+    toggle.addEventListener('change', () => act(() => send({ type: 'setShowSwitcher', value: toggle.checked })));
+    parts.push(el('label', { className: 'setting' }, toggle, 'Show focus menu on bookmark bar'));
   }
   app.replaceChildren(...parts);
 }

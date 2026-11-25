@@ -130,3 +130,34 @@ test('a bookmark deleted mid-swap is skipped, not fatal', async () => {
   assert.deepEqual(api._titles('1'), ['x', 'y']);
   assert.deepEqual(api._titles(generalId), ['a', 'c']);
 });
+
+async function withSwitcher(api) {
+  const { writeState } = await import('../extension/lib/store.js');
+  const sw = await api.bookmarks.create({ parentId: '1', index: 0, title: '⇄ General' });
+  await api.bookmarks.create({ parentId: sw.id, title: '✓ General', url: api.runtime.getURL('switch.html?focus=g') });
+  const st = await readState(api.storage.local);
+  st.switcherId = sw.id;
+  await writeState(api.storage.local, st);
+  return sw.id;
+}
+
+test('swap leaves the switcher first on the bar', async () => {
+  const { api, generalId, devId } = await seeded();
+  await withSwitcher(api);
+  await swapBar(api, devId);
+  assert.deepEqual(api._titles('1'), ['⇄ General', 'x', 'y']);
+  assert.deepEqual(api._titles(generalId), ['a', 'b', 'c']);
+  await swapBar(api, generalId);
+  assert.deepEqual(api._titles('1'), ['⇄ General', 'a', 'b', 'c']);
+  assert.deepEqual(api._titles(devId), ['x', 'y']);
+});
+
+test('recovery leaves the switcher on the bar', async () => {
+  const { api, generalId, devId } = await seeded();
+  await withSwitcher(api);
+  api._failAfterMoves(1);
+  await assert.rejects(swapBar(api, devId));
+  await recoverJournal(api);
+  assert.deepEqual(api._titles('1'), ['⇄ General', 'x', 'y']);
+  assert.deepEqual(api._titles(generalId), ['a', 'b', 'c']);
+});

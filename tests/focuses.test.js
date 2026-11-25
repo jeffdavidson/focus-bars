@@ -165,3 +165,63 @@ test('unrelated removal is ignored', async () => {
   await api.bookmarks.removeTree(a);
   assert.deepEqual(await handleExternalChange(api, 'removed', a, { parentId: '1' }), { changed: false });
 });
+
+test('copy of current bar skips the switcher', async () => {
+  const { api } = await seeded();
+  const sw = await api.bookmarks.create({ parentId: '1', index: 0, title: '⇄ General' });
+  const st = await readState(api.storage.local);
+  st.switcherId = sw.id;
+  await writeState(api.storage.local, st);
+  const id = await createFocus(api, 'Copy', { copyCurrent: true });
+  assert.deepEqual(api._titles(id), ['a', 'b', 'c']);
+});
+
+test('user deleting the switcher turns it off', async () => {
+  const { api } = await seeded();
+  const { syncSwitcher } = await import('../extension/lib/switcher-folder.js');
+  const { switcherId } = await syncSwitcher(api);
+  await api.bookmarks.removeTree(switcherId);
+  const r = await handleExternalChange(api, 'removed', switcherId, { parentId: '1', index: 0 });
+  assert.equal(r.changed, true);
+  await syncSwitcher(api); // the controller refreshes after a change
+  const state = await readState(api.storage.local);
+  assert.equal(state.showSwitcher, false);
+  assert.equal(state.switcherId, null);
+});
+
+test('user moving the switcher off the bar turns it off', async () => {
+  const { api } = await seeded();
+  const { syncSwitcher } = await import('../extension/lib/switcher-folder.js');
+  const { switcherId } = await syncSwitcher(api);
+  await api.bookmarks.move(switcherId, { parentId: '2' });
+  const r = await handleExternalChange(api, 'moved', switcherId, { parentId: '2', index: 1 });
+  assert.equal(r.changed, true);
+  await syncSwitcher(api); // the controller refreshes after a change
+  assert.equal((await readState(api.storage.local)).showSwitcher, false);
+});
+
+test('user dragging the switcher along the bar asks for a re-sync', async () => {
+  const { api } = await seeded();
+  const { syncSwitcher } = await import('../extension/lib/switcher-folder.js');
+  const { switcherId } = await syncSwitcher(api);
+  await api.bookmarks.move(switcherId, { parentId: '1', index: 2 });
+  const r = await handleExternalChange(api, 'moved', switcherId, { parentId: '1', index: 2 });
+  assert.equal(r.changed, true);
+  assert.notEqual((await readState(api.storage.local)).showSwitcher, false);
+});
+
+test('own sync is not an external delete', async () => {
+  const { api, devId } = await seeded();
+  const { syncSwitcher } = await import('../extension/lib/switcher-folder.js');
+  await syncSwitcher(api);
+  await deleteFocus(api, devId, async () => {});
+  const start = api._events.length;
+  await syncSwitcher(api); // removes Dev's entry
+  const events = api._events.slice(start).filter((e) => e.name === 'onRemoved' || e.name === 'onMoved');
+  assert.ok(events.length > 0);
+  for (const e of events) {
+    const r = await handleExternalChange(api, e.name === 'onRemoved' ? 'removed' : 'moved', ...e.args);
+    assert.equal(r.changed, false);
+  }
+  assert.notEqual((await readState(api.storage.local)).showSwitcher, false);
+});
