@@ -512,3 +512,24 @@ test('several switches from the bar at once: the first wins', async () => {
   await ctl.handleMessage({ type: 'assign', windowId: 1, focusId: generalId, quick: true });
   assert.equal((await readWindows(api.storage.session))[1].focusId, generalId, 'a later pick still works');
 });
+
+test('a swap that fails shows ! on the badge until the next good swap', async () => {
+  const { api, ctl, h, devId } = await setup();
+  await ctl.boot();
+  await ctl.restoreWindows();
+  const origError = console.error;
+  console.error = () => {};
+  try {
+    api._failAfterMoves(0); // the very first move throws; the bookmark still exists
+    await ctl.handleMessage({ type: 'assign', windowId: 1, focusId: devId, quick: true });
+  } finally {
+    console.error = origError;
+  }
+  assert.equal(api._badge(), '!');
+  assert.match(api._title(), /failed/);
+  h.advance(1_000);
+  await ctl.handleMessage({ type: 'assign', windowId: 1, focusId: devId, quick: true });
+  assert.equal(api._badge(), 'Dev');
+  assert.equal(api._title(), 'Focus Bars: Dev');
+  assert.deepEqual(api._titles('1'), ['x', 'y']);
+});

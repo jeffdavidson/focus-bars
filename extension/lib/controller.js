@@ -46,7 +46,12 @@ export function createController(api, {
     if (!state || state.needsRecovery) return;
     await swapBar(api, validFocus(state, focusId));
     await syncSwitcher(api);
-  }).then(updateBadge));
+  }).then(updateBadge, async (e) => {
+    // The bar didn't change; say so on the toolbar icon. The next good swap clears it.
+    await api.action.setBadgeText({ text: '!' });
+    await api.action.setTitle({ title: `Focus Bars: switch failed — ${e.message}` });
+    throw e;
+  }));
 
   /** Bring the bar's switcher folder and the badge up to date. */
   const refresh = () => exclusive(() => syncSwitcher(api)).then(updateBadge);
