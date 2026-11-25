@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Focus Bars",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "A different bookmark bar for each window's focus.",
   "permissions": [
     "bookmarks",
