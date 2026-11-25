@@ -165,3 +165,13 @@ test('unrelated removal is ignored', async () => {
   await api.bookmarks.removeTree(a);
   assert.deepEqual(await handleExternalChange(api, 'removed', a, { parentId: '1' }), { changed: false });
 });
+
+test('copy of current bar skips the switcher', async () => {
+  const { api } = await seeded();
+  const sw = await api.bookmarks.create({ parentId: '1', index: 0, title: '⇄ General' });
+  const st = await readState(api.storage.local);
+  st.switcherId = sw.id;
+  await writeState(api.storage.local, st);
+  const id = await createFocus(api, 'Copy', { copyCurrent: true });
+  assert.deepEqual(api._titles(id), ['a', 'b', 'c']);
+});

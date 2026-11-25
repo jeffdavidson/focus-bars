@@ -4,11 +4,13 @@ const now = () => (globalThis.performance ? performance.now() : Date.now());
 
 /**
  * Move every child of `fromId`, in order, to the end of `toId`. An item that
- * vanishes mid-swap (deleted by the user or by Sync) is skipped.
+ * vanishes mid-swap (deleted by the user or by Sync) is skipped, and so is
+ * anything in `skipIds` (the bar's switcher folder).
  */
-export async function moveAllChildren(bookmarks, fromId, toId) {
+export async function moveAllChildren(bookmarks, fromId, toId, skipIds = []) {
   const kids = await bookmarks.getChildren(fromId);
   for (const k of kids) {
+    if (skipIds.includes(k.id)) continue;
     try {
       await bookmarks.move(k.id, { parentId: toId });
     } catch (e) {
@@ -46,7 +48,7 @@ async function runJournal(api, state) {
   await writeState(storage.local, state);
 
   if (state.journal.phase === 'toFolder') {
-    await moveAllChildren(bookmarks, state.barId, state.journal.from);
+    await moveAllChildren(bookmarks, state.barId, state.journal.from, [state.switcherId]);
     state.journal = { ...state.journal, phase: 'toBar' };
     await writeState(storage.local, state);
   }

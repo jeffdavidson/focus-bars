@@ -9,8 +9,9 @@ export async function listFocuses(api) {
   return nodes.map((n) => ({ id: n.id, name: n.title }));
 }
 
-async function copyTree(bookmarks, fromId, toId) {
+async function copyTree(bookmarks, fromId, toId, skipIds = []) {
   for (const n of await bookmarks.getChildren(fromId)) {
+    if (skipIds.includes(n.id)) continue;
     if (n.url !== undefined) {
       await bookmarks.create({ parentId: toId, title: n.title, url: n.url });
     } else {
@@ -24,7 +25,7 @@ async function copyTree(bookmarks, fromId, toId) {
 export async function createFocus(api, name, { copyCurrent }) {
   const state = await readState(api.storage.local);
   const folder = await api.bookmarks.create({ parentId: state.rootId, title: name });
-  if (copyCurrent) await copyTree(api.bookmarks, state.barId, folder.id);
+  if (copyCurrent) await copyTree(api.bookmarks, state.barId, folder.id, [state.switcherId]);
   state.focusIds.push(folder.id);
   await writeState(api.storage.local, state);
   return folder.id;

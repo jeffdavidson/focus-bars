@@ -218,6 +218,7 @@ export function createFakeChrome(seed = {}) {
   };
 
   const runtime = {
+    getURL: (path) => `chrome-extension://fakeid/${path}`,
     onStartup: makeEvent(),
     onInstalled: makeEvent(),
     onMessage: makeEvent(),
