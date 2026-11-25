@@ -1,5 +1,6 @@
 import { findRoots, getExisting } from './roots.js';
 import { readState, writeState, readWindows, writeWindows } from './store.js';
+import { moveAllChildren } from './swap.js';
 import { ROOT_TITLE, GENERAL_TITLE, REMOVED_PREFIX, RECOVERED_TITLE } from './setup.js';
 
 /** @returns {Promise<{id: string, name: string}[]>} */
@@ -133,5 +134,25 @@ export async function handleExternalChange(api, kind, id, info = {}) {
     await remapUsers(api, state, id, state.generalId);
   }
   await writeState(api.storage.local, state);
+  return { changed: true };
+}
+
+/**
+ * While a focus is on the bar its folder should be empty. Anything the user
+ * adds there (⌘D into "Dev", a drag in the bookmark manager) belongs on the bar,
+ * so move it to the end of the bar. Decided from the folder's contents now.
+ * @returns {Promise<{changed: boolean}>}
+ */
+export async function drainActiveFolder(api) {
+  const state = await readState(api.storage.local);
+  if (!state || state.journal || state.needsRecovery) return { changed: false };
+  let kids;
+  try {
+    kids = await api.bookmarks.getChildren(state.activeId);
+  } catch {
+    return { changed: false }; // folder missing: setup/recovery repairs it
+  }
+  if (kids.length === 0) return { changed: false };
+  await moveAllChildren(api.bookmarks, state.activeId, state.barId);
   return { changed: true };
 }

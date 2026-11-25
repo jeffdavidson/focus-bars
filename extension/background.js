@@ -35,6 +35,7 @@ chrome.tabs.onDetached.addListener(run((tabId, info) => ctl.onTabsChanged(info.o
 chrome.bookmarks.onRemoved.addListener(run((id, info) => ctl.onBookmarkEvent('removed', id, info)));
 chrome.bookmarks.onMoved.addListener(run((id, info) => ctl.onBookmarkEvent('moved', id, info)));
 chrome.bookmarks.onChanged.addListener(run((id) => ctl.onBookmarkChanged(id)));
+chrome.bookmarks.onCreated.addListener(run((id, node) => ctl.onBookmarkCreated(id, node)));
 
 chrome.commands.onCommand.addListener(run((command, tab) => ctl.onCommand(command, tab)));
 

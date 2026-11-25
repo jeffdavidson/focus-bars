@@ -606,3 +606,64 @@ test('two quick presses of next-focus move two steps', async () => {
   assert.equal((await readWindows(api.storage.session))[1].focusId, music);
   assert.deepEqual(api._titles('1'), []);
 });
+
+test('a bookmark added to the active focus folder appears on the bar', async () => {
+  const { api, ctl, devId } = await setup();
+  await ctl.boot();
+  await ctl.restoreWindows();
+  await ctl.assign(1, devId); // Dev is on the bar, so its folder is empty
+  const z = await api.bookmarks.create({ parentId: devId, title: 'z', url: 'https://z/' }); // e.g. ⌘D → folder "Dev"
+  await ctl.onBookmarkCreated(z.id, z);
+  assert.deepEqual(api._titles('1'), ['x', 'y', 'z']);
+  assert.deepEqual(api._titles(devId), []);
+});
+
+test('a bookmark dragged into the active focus folder appears on the bar', async () => {
+  const { api, ctl, devId } = await setup();
+  await ctl.boot();
+  await ctl.restoreWindows();
+  await ctl.assign(1, devId);
+  const z = await api.bookmarks.create({ parentId: '2', title: 'z', url: 'https://z/' });
+  await api.bookmarks.move(z.id, { parentId: devId });
+  await ctl.onBookmarkEvent('moved', z.id, { parentId: devId, index: 0, oldParentId: '2', oldIndex: 1 });
+  assert.deepEqual(api._titles('1'), ['x', 'y', 'z']);
+});
+
+test('a bookmark added while the worker slept shows up when it wakes', async () => {
+  const { api, ctl, h, devId } = await setup();
+  await ctl.boot();
+  await ctl.restoreWindows();
+  await ctl.assign(1, devId);
+  await api.bookmarks.create({ parentId: devId, title: 'z', url: 'https://z/' });
+  const woke = createController(api, h);
+  await woke.boot();
+  assert.deepEqual(api._titles('1'), ['x', 'y', 'z']);
+});
+
+test('a bookmark added to an inactive focus folder stays there', async () => {
+  const { api, ctl, generalId, devId } = await setup();
+  await ctl.boot();
+  await ctl.restoreWindows();
+  await ctl.assign(1, devId);
+  const z = await api.bookmarks.create({ parentId: generalId, title: 'z', url: 'https://z/' });
+  await ctl.onBookmarkCreated(z.id, z);
+  assert.deepEqual(api._titles('1'), ['x', 'y']);
+  assert.deepEqual(api._titles(generalId), ['a', 'b', 'c', 'z']);
+});
+
+test('replaying the events from swaps changes nothing', async () => {
+  const { api, ctl, generalId, devId } = await setup();
+  await ctl.boot();
+  await ctl.restoreWindows();
+  const start = api._events.length;
+  await ctl.assign(1, devId);
+  await ctl.assign(1, generalId);
+  await ctl.assign(1, devId);
+  for (const e of api._events.slice(start)) {
+    if (e.name === 'onMoved') await ctl.onBookmarkEvent('moved', ...e.args);
+    if (e.name === 'onCreated') await ctl.onBookmarkCreated(...e.args);
+  }
+  assert.deepEqual(api._titles('1'), ['x', 'y']);
+  assert.deepEqual(api._titles(generalId), ['a', 'b', 'c']);
+  assert.deepEqual(api._titles(devId), []);
+});
