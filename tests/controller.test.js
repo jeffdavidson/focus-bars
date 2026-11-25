@@ -596,3 +596,13 @@ test('unknown commands are ignored', async () => {
   await ctl.onCommand('something-else', { windowId: 1 });
   assert.deepEqual(api._titles('1'), ['a', 'b', 'c']);
 });
+
+test('two quick presses of next-focus move two steps', async () => {
+  const { api, ctl, rootId } = await setup();
+  await ctl.boot();
+  await ctl.restoreWindows();
+  const music = await withMusic(api, rootId);
+  await Promise.all([ctl.onCommand('next-focus', { windowId: 1 }), ctl.onCommand('next-focus', { windowId: 1 })]);
+  assert.equal((await readWindows(api.storage.session))[1].focusId, music);
+  assert.deepEqual(api._titles('1'), []);
+});

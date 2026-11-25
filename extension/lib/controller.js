@@ -152,18 +152,21 @@ export function createController(api, {
     await writeWindows(api.storage.session, map);
   });
 
+  /** Record a window's focus and fingerprint. Call only inside `exclusive`. @returns the stored focus id */
+  async function setWindowFocus(windowId, focusId) {
+    focusId = validFocus(await readState(api.storage.local), focusId); // stale switch links fall back to General
+    const map = await readWindows(api.storage.session);
+    map[windowId] = { ...(map[windowId] ?? { printKey: uuid() }), focusId };
+    delete map[windowId].unmatched;
+    await writeWindows(api.storage.session, map);
+    const win = await getWindow(windowId);
+    await writePrint(windowId, urlsOf(win?.tabs));
+    return focusId;
+  }
+
   /** @param {{fromPopup?: boolean}} opts  the popup belongs to the window, so always swap */
   async function assign(windowId, focusId, { fromPopup = false } = {}) {
-    focusId = await exclusive(async () => {
-      focusId = validFocus(await readState(api.storage.local), focusId); // stale switch links fall back to General
-      const map = await readWindows(api.storage.session);
-      map[windowId] = { ...(map[windowId] ?? { printKey: uuid() }), focusId };
-      delete map[windowId].unmatched;
-      await writeWindows(api.storage.session, map);
-      const win = await getWindow(windowId);
-      await writePrint(windowId, urlsOf(win?.tabs));
-      return focusId;
-    });
+    focusId = await exclusive(() => setWindowFocus(windowId, focusId));
     if (fromPopup) await switcher.request(focusId);
     else await swapIfFocused(windowId);
   }
@@ -263,12 +266,17 @@ export function createController(api, {
         windowId = (await api.windows.getAll()).find((w) => w.focused && w.type === 'normal')?.id;
       }
       if (windowId == null) return;
-      const ids = (await listFocuses(api)).map((f) => f.id);
-      if (ids.length < 2) return;
-      const current = (await readWindows(api.storage.session))[windowId]?.focusId ?? state.activeId;
-      const i = ids.indexOf(current);
-      const next = i < 0 ? ids[step > 0 ? 0 : ids.length - 1] : ids[(i + step + ids.length) % ids.length];
-      await assign(windowId, next, { fromPopup: true });
+      // Read the current focus and store the next one in a single locked step, so quick
+      // or auto-repeated presses each move one place instead of racing to the same answer.
+      const next = await exclusive(async () => {
+        const ids = (await listFocuses(api)).map((f) => f.id);
+        if (ids.length < 2) return null;
+        const current = (await readWindows(api.storage.session))[windowId]?.focusId ?? state.activeId;
+        const i = ids.indexOf(current);
+        const target = i < 0 ? ids[step > 0 ? 0 : ids.length - 1] : ids[(i + step + ids.length) % ids.length];
+        return setWindowFocus(windowId, target);
+      });
+      if (next) await switcher.request(next);
     },
 
     async handleMessage(msg) {
