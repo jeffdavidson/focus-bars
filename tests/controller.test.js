@@ -207,6 +207,7 @@ test('badge shows active focus', async () => {
   await ctl.restoreWindows();
   await ctl.assign(1, devId);
   assert.equal(api._badge(), 'Dev');
+  assert.equal(api._title(), 'Focus Bars: Dev', 'hover text names the focus (and clears any error)');
 });
 
 test('external bookmark change updates badge', async () => {

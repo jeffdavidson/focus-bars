@@ -230,7 +230,11 @@ export function createFakeChrome(seed = {}) {
       badge = text;
     },
     async setBadgeBackgroundColor() {},
+    async setTitle({ title: t }) {
+      title = t;
+    },
   };
+  let title = '';
 
   return {
     bookmarks,
@@ -258,6 +262,7 @@ export function createFakeChrome(seed = {}) {
     /** Every bookmark event fired so far: [{name, args}]. */
     _events: events,
     _badge: () => badge,
+    _title: () => title,
     /** Mutable window list for tests: [{id, type, focused, tabs:[{id, url?, pendingUrl?}]}]. */
     _windows: wins,
     _addTab: (windowId, t) => {

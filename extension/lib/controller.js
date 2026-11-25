@@ -55,14 +55,19 @@ export function createController(api, {
     const state = await readState(api.storage.local);
     if (!state) return;
     let text = '?';
+    let title = 'Focus Bars: which focus is on the bar?';
     if (!state.needsRecovery) {
       try {
-        text = (await api.bookmarks.get(state.activeId))[0].title.slice(0, 4);
+        const name = (await api.bookmarks.get(state.activeId))[0].title;
+        text = name.slice(0, 4);
+        title = `Focus Bars: ${name}`;
       } catch {
         text = '';
+        title = 'Focus Bars';
       }
     }
     await api.action.setBadgeText({ text });
+    await api.action.setTitle({ title });
   }
 
   async function getWindow(windowId) {

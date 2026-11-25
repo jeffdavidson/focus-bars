@@ -47,3 +47,41 @@ test('quick messages from the switch page are acknowledged before the swap', asy
   delete globalThis.chrome;
   mock.timers.reset();
 });
+
+async function loadFresh(tag, seed) {
+  const api = createFakeChrome(seed ?? { bar: [{ title: 'a', url: 'https://a/' }], windows: [{ id: 1, focused: true, tabs: ['https://a/'] }] });
+  mock.timers.enable({ apis: ['setTimeout'] });
+  globalThis.chrome = api;
+  await import(`../extension/background.js?${tag}`);
+  return api;
+}
+const settle = async () => { for (let i = 0; i < 30; i++) await new Promise((r) => setImmediate(r)); };
+const done = () => { delete globalThis.chrome; mock.timers.reset(); };
+
+test('a Chrome update does not rebuild the window map', async () => {
+  const api = await loadFresh('cu', {
+    bar: [{ title: 'a', url: 'https://a/' }],
+    windows: [{ id: 1, focused: true, tabs: ['https://a/'] }, { id: 2, tabs: ['chrome://newtab/'] }],
+  });
+  api.runtime.onInstalled._fire({ reason: 'install' });
+  await settle();
+  const before = (await api.storage.session.get('windows')).windows[2].focusId; // General
+  await new Promise((resolve) =>
+    api.runtime.onMessage._fire({ type: 'create', windowId: 1, name: 'Dev', copyCurrent: false }, {}, resolve));
+  api.runtime.onInstalled._fire({ reason: 'chrome_update' });
+  await settle();
+  const { windows } = await api.storage.session.get('windows');
+  assert.equal(windows[2].focusId, before, 'an unrecognisable window keeps its focus');
+  done();
+});
+
+test('a failed switch from the bar shows ! on the badge', async () => {
+  const api = await loadFresh('err');
+  api.runtime.onInstalled._fire({ reason: 'install' });
+  await settle();
+  api.runtime.onMessage._fire({ type: 'no-such-message', quick: true }, {}, () => {});
+  await settle();
+  assert.equal(api._badge(), '!');
+  assert.match(api._title(), /Focus Bars/);
+  done();
+});

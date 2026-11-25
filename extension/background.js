@@ -12,7 +12,11 @@ const run = (fn) => (...args) => {
 
 // MV3: register every listener synchronously at top level.
 chrome.runtime.onStartup.addListener(run(() => ctl.restoreWindows()));
-chrome.runtime.onInstalled.addListener(run(() => ctl.restoreWindows()));
+// Only a real install or extension update starts a new restore; a Chrome update
+// keeps session storage, so the window map is still right.
+chrome.runtime.onInstalled.addListener(run(({ reason }) => {
+  if (reason === 'install' || reason === 'update') return ctl.restoreWindows();
+}));
 
 chrome.windows.onFocusChanged.addListener(run((windowId) => ctl.onFocusChanged(windowId)));
 chrome.windows.onCreated.addListener(run((win) => ctl.onWindowCreated(win)));
@@ -36,7 +40,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.quick) {
     // From the bar's switch page: acknowledge at once so the tab can go back, then do the work.
     sendResponse({ ok: true });
-    ready.then(() => ctl.handleMessage(msg)).catch((e) => console.error('Focus Bars:', e));
+    ready.then(() => ctl.handleMessage(msg)).catch((e) => {
+      // The tab has already gone back, so say so on the toolbar icon; the next swap clears it.
+      console.error('Focus Bars:', e);
+      chrome.action.setBadgeText({ text: '!' });
+      chrome.action.setTitle({ title: `Focus Bars: switch failed — ${e.message}` });
+    });
     return false;
   }
   ready
