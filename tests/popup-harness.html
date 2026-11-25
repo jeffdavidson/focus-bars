@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Focus Bars popup — dev harness</title>
+  <link rel="stylesheet" href="../extension/popup/popup.css">
+  <style>body { border: 1px solid #ccc; margin: 16px; } </style>
+</head>
+<body>
+  <!-- Dev-only: runs the real popup against the in-memory fake. ?recovery=1 shows the recovery screen. -->
+  <main id="app" aria-live="polite"></main>
+  <p id="error" class="error" role="alert" hidden></p>
+  <footer id="footer" class="muted"></footer>
+  <script type="module">
+    import { createFakeChrome } from './fake-chrome.js';
+    import { createController } from '../extension/lib/controller.js';
+    import { readState, writeState } from '../extension/lib/store.js';
+    const api = createFakeChrome({
+      bar: [{ title: 'Inbox', url: 'https://mail/' }, { title: 'Calendar', url: 'https://cal/' }],
+      other: [{ title: 'Focus Bars', children: [{ title: 'General', children: [] }, { title: 'Dev', children: [{ title: 'GitHub', url: 'https://github.com/' }] }, { title: 'Music', children: [] }] }],
+      windows: [{ id: 1, focused: true, tabs: ['https://mail/'] }],
+    });
+    const id = (t) => api._id(t);
+    await writeState(api.storage.local, { version: 1, barId: '1', rootId: id('Focus Bars'), generalId: id('General'), focusIds: [id('General'), id('Dev'), id('Music')], activeId: id('General'), journal: null, needsRecovery: new URLSearchParams(location.search).has('recovery'), prints: {}, lastSwapMs: 12 });
+    const ctl = createController(api);
+    await ctl.boot();
+    await ctl.restoreWindows();
+    globalThis.chrome = {
+      ...api,
+      runtime: { sendMessage: (msg) => ctl.handleMessage(msg).then((result) => ({ ok: true, result }), (e) => ({ ok: false, error: e.message })) },
+    };
+    globalThis.fake = api;
+    await import('../extension/popup/popup.js');
+  </script>
+</body>
+</html>

@@ -6,6 +6,7 @@ function makeEvent() {
   return {
     addListener: (fn) => listeners.push(fn),
     _fire: (...args) => listeners.forEach((fn) => fn(...args)),
+    _count: () => listeners.length,
   };
 }
 
@@ -195,12 +196,29 @@ export function createFakeChrome(seed = {}) {
     async getLastFocused({ populate } = {}) {
       return windows.get((wins.find((w) => w.focused) ?? wins[0]).id, { populate });
     },
+    async getCurrent(opts) {
+      return windows.getLastFocused(opts);
+    },
+    onFocusChanged: makeEvent(),
+    onCreated: makeEvent(),
+    onRemoved: makeEvent(),
   };
 
   const tabs = {
     async query({ windowId } = {}) {
       return structuredClone(wins.filter((w) => windowId == null || w.id === windowId).flatMap((w) => w.tabs));
     },
+    onCreated: makeEvent(),
+    onUpdated: makeEvent(),
+    onRemoved: makeEvent(),
+    onAttached: makeEvent(),
+    onDetached: makeEvent(),
+  };
+
+  const runtime = {
+    onStartup: makeEvent(),
+    onInstalled: makeEvent(),
+    onMessage: makeEvent(),
   };
 
   let badge = '';
@@ -217,6 +235,7 @@ export function createFakeChrome(seed = {}) {
     windows,
     tabs,
     action,
+    runtime,
 
     // ---- test helpers ----
     /** Titles of a folder's children, in order. */

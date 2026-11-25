@@ -1,0 +1,93 @@
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --fg: #1f2328;
+  --muted: #6b7280;
+  --line: #e5e7eb;
+  --accent: #2563eb;
+  --hover: #f3f4f6;
+  --danger: #b91c1c;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #202124;
+    --fg: #e8eaed;
+    --muted: #9aa0a6;
+    --line: #3c4043;
+    --accent: #8ab4f8;
+    --hover: #2d2e31;
+    --danger: #f28b82;
+  }
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  width: 280px;
+  background: var(--bg);
+  color: var(--fg);
+  font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+main { padding: 12px 12px 4px; }
+
+h1 {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.focus-list { list-style: none; margin: 0 0 8px; padding: 0; }
+.focus-list label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.focus-list label:hover { background: var(--hover); }
+.focus-list input { accent-color: var(--accent); margin: 0; }
+.focus-list .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+button {
+  font: inherit;
+  color: var(--fg);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+button:hover { background: var(--hover); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+button.primary { background: var(--accent); color: var(--bg); }
+button.primary:hover { filter: brightness(1.08); }
+button.danger { color: var(--danger); }
+
+form { display: grid; gap: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+form input[type="text"] {
+  font: inherit;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+form .check { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+form .row { display: flex; justify-content: flex-end; gap: 4px; }
+
+.question { margin: 0 0 8px; }
+.muted { color: var(--muted); }
+.error { margin: 0 12px 8px; color: var(--danger); }
+footer { padding: 4px 12px 10px; font-size: 11px; }
+footer:empty { display: none; }
