@@ -100,3 +100,33 @@ test('findRoots falls back without folderType', async () => {
   };
   assert.deepEqual(await findRoots(api.bookmarks), { barId: '1', otherId: '2' });
 });
+
+test('a failed swap is finished before the next one (no restart in between)', async () => {
+  const { api, rootId, generalId, devId } = await seeded();
+  const music = await api.bookmarks.create({ parentId: rootId, title: 'Music' });
+  await api.bookmarks.create({ parentId: music.id, title: 'm1', url: 'https://m1/' });
+  const st = await readState(api.storage.local);
+  st.focusIds.push(music.id);
+  await (await import('../extension/lib/store.js')).writeState(api.storage.local, st);
+  api._failAfterMoves(4); // dies mid 'toBar': bar = [x], Dev = [y]
+  await assert.rejects(swapBar(api, devId));
+  const state = await swapBar(api, music.id);
+  assert.deepEqual(api._titles('1'), ['m1']);
+  assert.deepEqual(api._titles(generalId), ['a', 'b', 'c'], 'no Dev item filed under General');
+  assert.deepEqual(api._titles(devId), ['x', 'y']);
+  assert.equal(state.activeId, music.id);
+  assert.equal(state.journal, null);
+});
+
+test('a bookmark deleted mid-swap is skipped, not fatal', async () => {
+  const { api, generalId, devId } = await seeded();
+  const b = api._id('b');
+  let once = false;
+  api.bookmarks.onMoved.addListener(() => {
+    if (!once) { once = true; api.bookmarks.removeTree(b); } // user deletes 'b' after 'a' moved
+  });
+  const state = await swapBar(api, devId);
+  assert.equal(state.journal, null);
+  assert.deepEqual(api._titles('1'), ['x', 'y']);
+  assert.deepEqual(api._titles(generalId), ['a', 'c']);
+});

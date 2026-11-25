@@ -38,6 +38,7 @@ export function createFakeChrome(seed = {}) {
   const nodes = new Map(); // id -> {id, parentId, title, url?, children?: string[], folderType?}
   let nextId = 100;
   let movesLeft = Infinity;
+  let moveDelayMs = 0;
   const events = []; // every fired bookmark event, in order: {name, args}
 
   const onMoved = makeEvent();
@@ -132,6 +133,7 @@ export function createFakeChrome(seed = {}) {
         throw new Error('Simulated service-worker death during move');
       }
       movesLeft -= 1;
+      if (moveDelayMs) await new Promise((r) => setTimeout(r, moveDelayMs));
       const n = need(id);
       const target = need(parentId ?? n.parentId);
       if (!target.children) throw new Error('Target is not a folder.');
@@ -247,6 +249,10 @@ export function createFakeChrome(seed = {}) {
     /** Let n moves succeed, then make the next one throw (once). */
     _failAfterMoves: (n) => {
       movesLeft = n;
+    },
+    /** Make every move take `ms` real milliseconds. */
+    _slowMoves: (ms) => {
+      moveDelayMs = ms;
     },
     /** Every bookmark event fired so far: [{name, args}]. */
     _events: events,

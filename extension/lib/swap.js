@@ -2,10 +2,19 @@ import { readState, writeState } from './store.js';
 
 const now = () => (globalThis.performance ? performance.now() : Date.now());
 
-/** Move every child of `fromId`, in order, to the end of `toId`. */
+/**
+ * Move every child of `fromId`, in order, to the end of `toId`. An item that
+ * vanishes mid-swap (deleted by the user or by Sync) is skipped.
+ */
 export async function moveAllChildren(bookmarks, fromId, toId) {
   const kids = await bookmarks.getChildren(fromId);
-  for (const k of kids) await bookmarks.move(k.id, { parentId: toId });
+  for (const k of kids) {
+    try {
+      await bookmarks.move(k.id, { parentId: toId });
+    } catch (e) {
+      if (await exists(bookmarks, k.id)) throw e;
+    }
+  }
 }
 
 async function exists(bookmarks, id) {
@@ -51,7 +60,9 @@ async function runJournal(api, state) {
 
 /** Swap the bookmark bar to focus `toId`. @returns {Promise<import('./store.js').State>} */
 export async function swapBar(api, toId) {
-  const state = await readState(api.storage.local);
+  // Finish any swap that failed earlier in this worker's life before starting a
+  // new one; otherwise its half-moved bookmarks would be filed under the wrong focus.
+  const state = (await recoverJournal(api)) ?? (await readState(api.storage.local));
   if (toId === state.activeId) return state;
   const t0 = now();
   state.journal = { from: state.activeId, to: toId, phase: 'toFolder' };

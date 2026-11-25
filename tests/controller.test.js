@@ -290,3 +290,56 @@ test('bookmark event during a swap does not clobber swap state', async () => {
   assert.equal(state.journal, null);
   assert.equal(state.activeId, devId);
 });
+
+test('quick switching skips intermediate swaps', async () => {
+  const { api, ctl, rootId, devId, generalId } = await setup({
+    windows: [{ id: 1, focused: true, tabs: ['https://g/1'] }, { id: 2, tabs: ['https://d/1'] }, { id: 3, tabs: ['https://m/1'] }],
+  });
+  await ctl.boot();
+  await ctl.restoreWindows();
+  const music = await api.bookmarks.create({ parentId: rootId, title: 'Music' });
+  const st = await readState(api.storage.local);
+  st.focusIds.push(music.id);
+  await writeState(api.storage.local, st);
+  await ctl.assign(2, devId);
+  await ctl.assign(3, music.id);
+  const targets = [];
+  const set = api.storage.local.set;
+  api.storage.local.set = async (obj) => {
+    const j = obj.state?.journal;
+    if (j?.phase === 'toFolder' && targets.at(-1) !== j.to) targets.push(j.to);
+    return set(obj);
+  };
+  api._slowMoves(10);
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const all = [ctl.onFocusChanged(2)];
+  await wait(5);
+  all.push(ctl.onFocusChanged(3));
+  await wait(5);
+  all.push(ctl.onFocusChanged(1));
+  await Promise.all(all);
+  assert.deepEqual(targets, [devId, generalId], 'Music swap skipped');
+  assert.deepEqual(api._titles('1'), ['a', 'b', 'c']);
+});
+
+test('picking a focus in the popup swaps even if the window is not reported focused', async () => {
+  const { api, ctl, devId } = await setup();
+  await ctl.boot();
+  await ctl.restoreWindows();
+  api._windows[0].focused = false; // the popup may hold focus on macOS
+  await ctl.handleMessage({ type: 'assign', windowId: 1, focusId: devId });
+  assert.deepEqual(api._titles('1'), ['x', 'y']);
+});
+
+test('restore period finishes on next wake if its timer was lost', async () => {
+  const { api, ctl, h } = await setup();
+  await ctl.boot();
+  await ctl.restoreWindows(); // worker dies before the 60 s timer fires
+  h.advance(61_000);
+  const ctl2 = createController(api, h);
+  await ctl2.boot();
+  const map = await readWindows(api.storage.session);
+  const prints = (await readState(api.storage.local)).prints;
+  assert.equal(map[1].unmatched, undefined);
+  assert.deepEqual(prints[map[1].printKey].urls, ['https://g/1']);
+});

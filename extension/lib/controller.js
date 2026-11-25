@@ -133,7 +133,8 @@ export function createController(api, {
     await writeWindows(api.storage.session, map);
   });
 
-  async function assign(windowId, focusId) {
+  /** @param {{fromPopup?: boolean}} opts  the popup belongs to the window, so always swap */
+  async function assign(windowId, focusId, { fromPopup = false } = {}) {
     await exclusive(async () => {
       const map = await readWindows(api.storage.session);
       map[windowId] = { ...(map[windowId] ?? { printKey: uuid() }), focusId };
@@ -142,13 +143,17 @@ export function createController(api, {
       const win = await getWindow(windowId);
       await writePrint(windowId, urlsOf(win?.tabs));
     });
-    await swapIfFocused(windowId);
+    if (fromPopup) await switcher.request(focusId);
+    else await swapIfFocused(windowId);
   }
 
   return {
     /** Every service-worker load: repair folders, finish any interrupted swap. */
     async boot() {
       await exclusive(() => initialize(api));
+      // The restore-end timer dies with the worker; finish the period on the next wake instead.
+      const { restoreUntil } = await api.storage.session.get('restoreUntil');
+      if (restoreUntil != null && now() >= restoreUntil) await finishRestore();
       await updateBadge();
     },
 
@@ -181,9 +186,14 @@ export function createController(api, {
       if (windowId === NONE) return;
       const win = await getWindow(windowId);
       if (!win || win.type !== 'normal') return;
-      await addWindow(win);
-      const map = await readWindows(api.storage.session);
-      await switcher.request(map[windowId].focusId);
+      // Read without the lock so a focus change arriving mid-swap reaches the
+      // switcher at once and replaces any request still waiting there.
+      let entry = (await readWindows(api.storage.session))[windowId];
+      if (!entry) {
+        await addWindow(win);
+        entry = (await readWindows(api.storage.session))[windowId];
+      }
+      await switcher.request(entry.focusId);
     },
 
     async onWindowCreated(win) {
@@ -229,11 +239,11 @@ export function createController(api, {
           };
         }
         case 'assign':
-          await assign(msg.windowId, msg.focusId);
+          await assign(msg.windowId, msg.focusId, { fromPopup: true });
           return { ok: true };
         case 'create': {
           const id = await exclusive(() => createFocus(api, msg.name, { copyCurrent: !!msg.copyCurrent }));
-          await assign(msg.windowId, id);
+          await assign(msg.windowId, id, { fromPopup: true });
           return { id };
         }
         case 'rename':
