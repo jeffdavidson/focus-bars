@@ -85,3 +85,14 @@ test('a failed switch from the bar shows ! on the badge', async () => {
   assert.match(api._title(), /Focus Bars/);
   done();
 });
+
+test('manifest declares the shortcuts and background listens for them', async () => {
+  const { readFileSync } = await import('node:fs');
+  const manifest = JSON.parse(readFileSync(new URL('../extension/manifest.json', import.meta.url)));
+  assert.deepEqual(manifest.commands['next-focus'].suggested_key, { default: 'Alt+Shift+Right', mac: 'MacCtrl+Shift+Right' });
+  assert.deepEqual(manifest.commands['previous-focus'].suggested_key, { default: 'Alt+Shift+Left', mac: 'MacCtrl+Shift+Left' });
+  assert.deepEqual(manifest.commands._execute_action.suggested_key, { default: 'Alt+Shift+F', mac: 'Alt+Shift+F' });
+  const api = await loadFresh('cmd');
+  assert.ok(api.commands.onCommand._count() >= 1);
+  done();
+});

@@ -217,6 +217,8 @@ export function createFakeChrome(seed = {}) {
     onDetached: makeEvent(),
   };
 
+  const commands = { onCommand: makeEvent() };
+
   const runtime = {
     getURL: (path) => `chrome-extension://fakeid/${path}`,
     onStartup: makeEvent(),
@@ -243,6 +245,7 @@ export function createFakeChrome(seed = {}) {
     tabs,
     action,
     runtime,
+    commands,
 
     // ---- test helpers ----
     /** Titles of a folder's children, in order. */
