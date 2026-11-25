@@ -120,3 +120,34 @@ test('resolveRecovery clears flag', async () => {
   assert.equal(state.activeId, devId);
   assert.deepEqual(await readState(api.storage.local), state);
 });
+
+const oldLink = (id) => ({ title: '✓ Dev', url: `chrome-extension://oldid/switch.html?focus=${id}` });
+
+test('first run adopts a leftover switcher', async () => {
+  const api = createFakeChrome({ bar: [{ title: '⇄ Dev', children: [oldLink(9)] }, bm('a')] });
+  const state = await initialize(api);
+  const sw = api._id('⇄ Dev');
+  assert.equal(state.switcherId, sw);
+  assert.equal(state.showSwitcher, true);
+  const { createFocus } = await import('../extension/lib/focuses.js');
+  const dev = await createFocus(api, 'Dev', { copyCurrent: false });
+  await swapBar(api, dev);
+  assert.deepEqual(api._titles('1'), ['⇄ Dev']);
+  assert.deepEqual(api._titles(state.generalId), ['a'], 'switcher not filed under General');
+});
+
+test('reinstall adopts a leftover switcher', async () => {
+  const api = createFakeChrome({
+    bar: [{ title: '⇄ Dev', children: [oldLink(9)] }, bm('x')],
+    other: [{ title: 'Focus Bars', children: [{ title: 'General', children: [bm('a')] }, { title: 'Dev', children: [] }] }],
+  });
+  const state = await initialize(api);
+  assert.equal(state.switcherId, api._id('⇄ Dev'));
+  assert.equal(state.activeId, api._id('Dev'));
+});
+
+test('a folder of ordinary bookmarks named ⇄ is not adopted', async () => {
+  const api = createFakeChrome({ bar: [{ title: '⇄ stuff', children: [bm('q')] }, bm('a')] });
+  const state = await initialize(api);
+  assert.equal(state.switcherId, null);
+});

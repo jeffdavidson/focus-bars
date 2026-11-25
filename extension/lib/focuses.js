@@ -72,6 +72,15 @@ export async function handleExternalChange(api, kind, id, info = {}) {
   const state = await readState(api.storage.local);
   if (!state || state.journal) return { changed: false };
 
+  if (id && id === state.switcherId) {
+    // Dragged along the bar: the controller puts it back first. Anywhere else: the user wants it gone.
+    if (kind === 'moved' && info.parentId === state.barId) return { changed: info.index !== 0 };
+    state.switcherId = null;
+    state.showSwitcher = false;
+    await writeState(api.storage.local, state);
+    return { changed: true };
+  }
+
   if (id === state.rootId) {
     // A moved container keeps its folders; only a deletion needs repair.
     if (kind === 'moved') return { changed: false };

@@ -1,6 +1,7 @@
 import { findRoots } from './roots.js';
 import { readState, writeState } from './store.js';
 import { recoverJournal } from './swap.js';
+import { SWITCHER_PREFIX, isSwitchLink } from './switcher-folder.js';
 
 export const ROOT_TITLE = 'Focus Bars';
 export const GENERAL_TITLE = 'General';
@@ -18,8 +19,16 @@ async function exists(bookmarks, id) {
 
 const isFolder = (n) => n.url === undefined;
 
-function freshState({ barId, rootId, generalId, focusIds, activeId, needsRecovery }) {
-  return { version: 1, barId, rootId, generalId, focusIds, activeId, journal: null, needsRecovery, prints: {}, lastSwapMs: null };
+function freshState({ barId, rootId, generalId, focusIds, activeId, needsRecovery, switcherId = null }) {
+  return { version: 1, barId, rootId, generalId, focusIds, activeId, journal: null, needsRecovery, prints: {}, lastSwapMs: null, switcherId, showSwitcher: true };
+}
+
+/** A switcher folder left on the bar by an earlier install: first on the bar, "⇄ " title, only switch links. */
+export async function findStaleSwitcher(bookmarks, barId) {
+  const [first] = await bookmarks.getChildren(barId);
+  if (!first || !isFolder(first) || !first.title.startsWith(SWITCHER_PREFIX)) return null;
+  const kids = await bookmarks.getChildren(first.id);
+  return kids.length > 0 && kids.every((k) => isSwitchLink(k.url)) ? first.id : null;
 }
 
 /** Make sure the container and General folder exist; repair state ids in place. */
@@ -69,6 +78,7 @@ export async function initialize(api) {
   }
 
   const { barId, otherId } = await findRoots(bookmarks);
+  const switcherId = await findStaleSwitcher(bookmarks, barId);
   const others = await bookmarks.getChildren(otherId);
   const rootNode = others.find((n) => isFolder(n) && n.title === ROOT_TITLE);
 
@@ -76,7 +86,7 @@ export async function initialize(api) {
     // First run: the current bar becomes General and stays where it is.
     const root = await bookmarks.create({ parentId: otherId, title: ROOT_TITLE });
     const general = await bookmarks.create({ parentId: root.id, title: GENERAL_TITLE });
-    const state = freshState({ barId, rootId: root.id, generalId: general.id, focusIds: [general.id], activeId: general.id, needsRecovery: false });
+    const state = freshState({ barId, rootId: root.id, generalId: general.id, focusIds: [general.id], activeId: general.id, needsRecovery: false, switcherId });
     await writeState(storage.local, state);
     return state;
   }
@@ -98,6 +108,7 @@ export async function initialize(api) {
     focusIds: folders.map((n) => n.id),
     activeId: known ? empty[0].id : general.id,
     needsRecovery: !known,
+    switcherId,
   });
   await writeState(storage.local, state);
   return state;
