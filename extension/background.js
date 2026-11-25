@@ -30,8 +30,15 @@ chrome.tabs.onDetached.addListener(run((tabId, info) => ctl.onTabsChanged(info.o
 
 chrome.bookmarks.onRemoved.addListener(run((id, info) => ctl.onBookmarkEvent('removed', id, info)));
 chrome.bookmarks.onMoved.addListener(run((id, info) => ctl.onBookmarkEvent('moved', id, info)));
+chrome.bookmarks.onChanged.addListener(run((id) => ctl.onBookmarkChanged(id)));
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg.quick) {
+    // From the bar's switch page: acknowledge at once so the tab can go back, then do the work.
+    sendResponse({ ok: true });
+    ready.then(() => ctl.handleMessage(msg)).catch((e) => console.error('Focus Bars:', e));
+    return false;
+  }
   ready
     .then(() => ctl.handleMessage(msg))
     .then((result) => sendResponse({ ok: true, result }), (e) => sendResponse({ ok: false, error: e.message }));
