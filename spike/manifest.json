@@ -1,9 +1,0 @@
-{
-  "manifest_version": 3,
-  "name": "Focus Bars — speed test (throwaway)",
-  "version": "0.0.1",
-  "description": "Swaps two bookmark bars on every window switch and times it. Use only in a throwaway profile.",
-  "permissions": ["bookmarks", "storage"],
-  "background": { "service_worker": "spike.js", "type": "module" },
-  "action": { "default_title": "Last swap time (ms)" }
-}
