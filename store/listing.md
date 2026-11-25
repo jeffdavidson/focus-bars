@@ -46,11 +46,15 @@ Everything stays on your computer. Focus Bars sends no data anywhere: no servers
 
 **Graphic assets:**
 - **Store icon:** `extension/icons/128.png` (128×128).
-- **Screenshots** (at least 1, up to 5, at **1280×800** or 640×400): take them in your throwaway profile. See the hand-off notes for how. Suggested shots:
-  1. A window on "Dev" with its bookmarks on the bar, and the ⇄ menu open showing the focuses.
-  2. The toolbar menu open: the focus list, "+ New focus…" and the bar-menu checkbox.
-  3. Two windows side by side, each on a different focus. Click into one so its bar shows.
-- **Small promo tile** (440×280): optional, so leave it out.
+- **Screenshots** (at least 1, up to 5, at **1280×800** or 640×400, JPEG or PNG without transparency). Version 1.0.0 shipped with two:
+  1. The ⇄ Dev folder open on the bar, listing General, Music and ✓ Dev.
+  2. The toolbar popup open on Dev: the focus list, New/Rename/Delete and the bar-menu checkbox.
+
+  Take tight crops in a throwaway profile; keep Google Doodles, personal bookmarks and other pages out of frame. Pad each one to size on a dark background rather than stretching it:
+  `sips -p 800 1280 --padColor 202124 in.png --out padded.png && sips -s format jpeg padded.png --out shot.jpg`
+
+  Screenshots live in the git-ignored `screenshots/` folder; they aren't committed.
+- **Small promo tile** (440×280): optional, but the store uses it when featuring extensions. Build it with `swift scripts/promo-tile.swift extension/icons/128.png screenshots/store/promo-small-440x280.png`.
 
 ---
 
