@@ -160,8 +160,8 @@ The change:
   - adopt a Focus Bars folder already there (asking which focus is on the bar if that's unclear), or make the current bar General;
   - carry over the ⇄ menu setting;
   - point open windows at the new active focus;
-  - finish any half-done swap in the old set first;
-  - remove the extension's own ⇄ folder from the old bar.
-- **Never move bookmarks between the two sets.** The old set's Focus Bars folder is left as it was; the user can move it with Chrome's own "Move to account".
+  - first, while the old bar still exists, finish any half-done swap there and swap that set back to General, so its bar looks as it did before Focus Bars and each focus's bookmarks are in its folder;
+  - remove the switch links from the old ⇄ folder, and the folder itself unless the user filed their own bookmarks in it.
+- **Never move bookmarks between the two sets.** The old set's Focus Bars folder is left where it is. Its focuses don't appear in the menus while the other set is shown; switching back adopts them again without a recovery question.
 
-Assumption checked in one profile only: when an account bar exists, Chrome shows it, not the device bar.
+Assumption, from one profile: when an account bar exists, Chrome shows it and not the device bar. To confirm by hand before release.

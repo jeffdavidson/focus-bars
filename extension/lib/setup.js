@@ -1,6 +1,6 @@
 import { findRoots } from './roots.js';
 import { readState, writeState, readWindows, writeWindows } from './store.js';
-import { recoverJournal } from './swap.js';
+import { recoverJournal, swapBar } from './swap.js';
 import { findStaleSwitcher, isSwitchLink } from './switcher-folder.js';
 
 export const ROOT_TITLE = 'Focus Bars';
@@ -119,12 +119,22 @@ export async function initialize(api) {
  */
 async function moveToShownSet(api, old) {
   const { bookmarks, storage } = api;
-  // Finish a half-done swap in the old set while its bar still exists.
-  if (old.journal && (await exists(bookmarks, old.barId))) old = (await recoverJournal(api)) ?? old;
-  // Our ⇄ menu on the old bar would only go stale; remove it.
+  if (await exists(bookmarks, old.barId)) {
+    // Finish a half-done swap in the old set, then put that set back on General,
+    // so its bar looks as it did before Focus Bars and every focus is in its folder.
+    old = (await recoverJournal(api)) ?? old;
+    if (!old.needsRecovery && old.activeId !== old.generalId && (await exists(bookmarks, old.generalId))) {
+      old = await swapBar(api, old.generalId);
+    }
+  }
+  // Our ⇄ menu on the old bar would only go stale. Remove its switch links, and
+  // the folder too unless the user filed bookmarks of their own in it.
   if (old.switcherId && (await exists(bookmarks, old.switcherId))) {
     const kids = await bookmarks.getChildren(old.switcherId);
-    if (kids.some((k) => isSwitchLink(k.url))) await bookmarks.removeTree(old.switcherId);
+    if (kids.some((k) => isSwitchLink(k.url))) {
+      for (const k of kids) if (isSwitchLink(k.url)) await bookmarks.remove(k.id);
+      if ((await bookmarks.getChildren(old.switcherId)).length === 0) await bookmarks.remove(old.switcherId);
+    }
   }
   await storage.local.remove('state');
   const state = await initialize(api);

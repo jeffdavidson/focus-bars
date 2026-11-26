@@ -113,8 +113,50 @@ test('a swap that died in the old set is finished there before moving on', async
   const state = await initialize(api);
   assert.equal(state.barId, accBar);
   assert.equal(state.journal, null);
-  assert.deepEqual(api._titles(generalId), ['a', 'b', 'c'], 'General complete again');
-  assert.deepEqual(api._titles('1'), ['x', 'y'], 'Dev on the old bar, all in one place');
+  assert.deepEqual(api._titles('1'), ['a', 'b', 'c'], 'old set finished, then put back on General');
+  assert.deepEqual(api._titles(devId), ['x', 'y'], 'Dev complete in its folder');
+  assert.deepEqual(api._titles(generalId), []);
+});
+
+test('leaving a set puts that set back on General, so nothing is stranded on a hidden bar', async () => {
+  const { api, generalId, devId } = await seeded();
+  const { swapBar } = await import('../extension/lib/swap.js');
+  await swapBar(api, devId);
+  assert.deepEqual(api._titles('1'), ['x', 'y']);
+  api._addAccountSet({ bar: [link('a1')] });
+  await initialize(api);
+  assert.deepEqual(api._titles('1'), ['a', 'b', 'c'], 'the hidden bar looks as it did before Focus Bars');
+  assert.deepEqual(api._titles(devId), ['x', 'y']);
+  assert.deepEqual(api._titles(generalId), []);
+});
+
+test('device (on Dev) → account → device comes back clean, with no recovery question', async () => {
+  const { api, devId } = await seeded();
+  const { swapBar } = await import('../extension/lib/swap.js');
+  await swapBar(api, devId);
+  const acc = api._addAccountSet({ bar: [link('a1')] });
+  await initialize(api);
+  api._dropNode(acc.barId);
+  api._dropNode(acc.otherId);
+  const state = await initialize(api);
+  assert.equal(state.barId, '1');
+  assert.equal(state.needsRecovery, false);
+  assert.equal(state.activeId, state.generalId);
+  assert.deepEqual(api._titles('1'), ['a', 'b', 'c']);
+  assert.deepEqual(api._titles(devId), ['x', 'y']);
+});
+
+test('a bookmark the user dropped into the old ⇄ folder is kept', async () => {
+  const { api } = await seeded();
+  const sw = await api.bookmarks.create({ parentId: '1', index: 0, title: '⇄ General' });
+  await api.bookmarks.create({ parentId: sw.id, title: '✓ General', url: 'chrome-extension://fakeid/switch.html?focus=x' });
+  await api.bookmarks.create({ parentId: sw.id, title: 'mine', url: 'https://mine/' });
+  const st = await readState(api.storage.local);
+  await writeState(api.storage.local, { ...st, switcherId: sw.id });
+  api._addAccountSet({ bar: [link('a1')] });
+  await initialize(api);
+  assert.ok(api._exists(sw.id), 'folder kept because it holds a user bookmark');
+  assert.deepEqual(api._titles(sw.id), ['mine'], 'only the switch links removed');
 });
 
 test('a deleted Focus Bars folder is rebuilt in the same set as the bar', async () => {
