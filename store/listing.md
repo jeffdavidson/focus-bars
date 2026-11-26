@@ -23,6 +23,11 @@ HOW IT WORKS
 • Switch focus from the toolbar menu, from the ⇄ folder at the start of the bar, or with a keyboard shortcut.
 • Each window remembers its focus, even after you quit and reopen Chrome.
 
+ADDING BOOKMARKS
+• To the current focus: bookmark as usual (⌘D on Mac, Ctrl+D on Windows/Linux, or the ☆ star) and save to the Bookmarks bar. It belongs to the focus that's on the bar.
+• To another focus without switching: in the save dialog, choose Other bookmarks → Focus Bars → <focus name>.
+• Signed in to Chrome? Save to the Bookmarks bar in your Google Account. Bookmarks saved only on this device stay on the bar in every focus.
+
 KEYBOARD SHORTCUTS (change them at chrome://extensions/shortcuts)
 • Next focus: Ctrl+Shift+→ on Mac, Alt+Shift+→ on Windows/Linux
 • Previous focus: Ctrl+Shift+← on Mac, Alt+Shift+← on Windows/Linux

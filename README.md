@@ -10,6 +10,9 @@ A Chrome extension that gives each window its own **focus**: a named set of book
 ## Use
 - **Choose a focus** from the toolbar icon or from the **⇄** folder at the start of the bar. You can make a new focus from the toolbar icon.
 - **Edit a focus** by editing the bar as usual while you're in a window using that focus.
+- **Add a bookmark to the current focus** the usual way (⌘D on Mac, Ctrl+D on Windows/Linux, or the ☆ star) and save it to the **Bookmarks bar**. It belongs to the focus that's on the bar.
+- **Add a bookmark to another focus without switching:** in the save dialog, choose **Other bookmarks → Focus Bars → <focus name>**.
+- **Signed in to Chrome?** The save dialog offers the Bookmarks bar in your Google Account and the one saved only on this device. Choose the account one: bookmarks saved only on this device stay on the bar in every focus.
 - **Where bookmarks live.** Each focus's bookmarks are kept in **Other bookmarks → Focus Bars → <name>** while that focus isn't on the bar.
 - **Turn off the ⇄ folder** from the toolbar menu, or by deleting it.
 - **Keyboard shortcuts** (change them at `chrome://extensions/shortcuts`):
