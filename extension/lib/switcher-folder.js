@@ -96,3 +96,21 @@ export async function syncSwitcher(api) {
   await writeState(storage.local, state);
   return state;
 }
+
+/**
+ * Chrome shows the account bar and the device-only bar as one strip. Count the
+ * user's items on bars other than `barId` (they stay on in every focus), not
+ * counting Focus Bars' own leftover ⇄ folders. Folders count as one item.
+ */
+export async function countOtherBarItems(bookmarks, barId) {
+  const [root] = await bookmarks.getTree();
+  let count = 0;
+  for (const bar of root.children ?? []) {
+    if (bar.folderType !== 'bookmarks-bar' || bar.id === barId) continue;
+    for (const n of bar.children ?? []) {
+      const ours = n.url === undefined && n.title.startsWith(SWITCHER_PREFIX) && (n.children ?? []).some((k) => isSwitchLink(k.url));
+      if (!ours) count += 1;
+    }
+  }
+  return count;
+}

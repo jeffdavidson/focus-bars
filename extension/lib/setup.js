@@ -139,6 +139,7 @@ async function moveToShownSet(api, old) {
   await storage.local.remove('state');
   const state = await initialize(api);
   state.showSwitcher = old.showSwitcher ?? true;
+  if (old.hideDeviceHint) state.hideDeviceHint = true;
   await writeState(storage.local, state);
   const wins = await readWindows(storage.session);
   for (const w of Object.values(wins)) w.focusId = state.activeId;

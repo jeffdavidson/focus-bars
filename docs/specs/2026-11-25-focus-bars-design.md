@@ -150,11 +150,12 @@ Observed and expected: because Chrome has one shared bar, changing the focus als
 
 ## Two bookmark sets (2026-11-26, version 1.0.1)
 
-Found when the extension was installed in a real, signed-in profile. Newer Chrome can keep two complete bookmark sets in one profile: one saved in the Google account (`syncing=true`) and one kept only on this device (`syncing=false`). Each set has its own bookmark bar and its own Other bookmarks. In that profile Chrome showed the account bar. Version 1.0.0 recorded the first bar Chrome reported at install and never checked again. Account bookmarks were switched on after install, so every swap, the ⇄ menu and the focus folders went to the hidden device set. Deletions made in the Bookmark Manager (in the account set) never reached the folders the extension tracked.
+Found when the extension was installed in a real, signed-in profile. Newer Chrome can keep two complete bookmark sets in one profile: one saved in the Google account (`syncing=true`) and one kept only on this device (`syncing=false`). Each set has its own bookmark bar and its own Other bookmarks. Chrome shows both bars as one strip: the account bar's items first, then the device bar's (confirmed in that profile: the device bar's ⇄ folder sat in the » overflow after 65 account bookmarks). Version 1.0.0 recorded the first bar Chrome reported at install and never checked again. Account bookmarks were switched on after install, so every swap, the ⇄ menu and the focus folders went to the hidden device set. Deletions made in the Bookmark Manager (in the account set) never reached the folders the extension tracked.
 
 The change:
 
-- **Use the bar Chrome shows.** Prefer the `syncing=true` bar when there is one, and always use the Other bookmarks from the same set.
+- **Switch the account bar.** Prefer the `syncing=true` bar when there is one: it comes first on screen, so the ⇄ menu is visible, and it's where Chrome saves new bookmarks once the user is signed in. Always use the Other bookmarks from the same set. (Switching both bars, with each focus split across two folders, was considered and set aside by the user: twice the work and risk, for people who keep many bookmarks only on their device.)
+- **Say what doesn't switch.** Items on the device bar stay on in every focus. When there are any (Focus Bars' own leftover ⇄ folders aren't counted), the popup shows a note with the count, an "Open Bookmark Manager" button (the user can move them to their account there) and "Don't show again". Focus Bars never moves them itself.
 - **Re-check it.** The check runs on every service-worker start, and when the tracked bar is deleted.
 - **Start over in the shown set when it changes,** as a reinstall would:
   - adopt a Focus Bars folder already there (asking which focus is on the bar if that's unclear), or make the current bar General;
@@ -164,4 +165,3 @@ The change:
   - remove the switch links from the old ⇄ folder, and the folder itself unless the user filed their own bookmarks in it.
 - **Never move bookmarks between the two sets.** The old set's Focus Bars folder is left where it is. Its focuses don't appear in the menus while the other set is shown; switching back adopts them again without a recovery question.
 
-Assumption, from one profile: when an account bar exists, Chrome shows it and not the device bar. To confirm by hand before release.

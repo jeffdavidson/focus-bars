@@ -15,18 +15,23 @@
     import { createFakeChrome } from './fake-chrome.js';
     import { createController } from '../extension/lib/controller.js';
     import { readState, writeState } from '../extension/lib/store.js';
-    const api = createFakeChrome({
-      bar: [{ title: 'Inbox', url: 'https://mail/' }, { title: 'Calendar', url: 'https://cal/' }],
-      other: [{ title: 'Focus Bars', children: [{ title: 'General', children: [] }, { title: 'Dev', children: [{ title: 'GitHub', url: 'https://github.com/' }] }, { title: 'Music', children: [] }] }],
-      windows: [{ id: 1, focused: true, tabs: ['https://mail/'] }],
-    });
+    const params = new URLSearchParams(location.search);
+    const focusBars = [{ title: 'Focus Bars', children: [{ title: 'General', children: [] }, { title: 'Dev', children: [{ title: 'GitHub', url: 'https://github.com/' }] }, { title: 'Music', children: [] }] }];
+    const shown = [{ title: 'Inbox', url: 'https://mail/' }, { title: 'Calendar', url: 'https://cal/' }];
+    // ?device=1: a signed-in profile with account bookmarks, plus items saved only on this device.
+    const device = params.has('device');
+    const api = createFakeChrome(device
+      ? { bar: [{ title: 'Old news', url: 'https://news/' }, { title: 'Recipes', children: [] }, { title: 'Bank', url: 'https://bank/' }], account: { bar: shown, other: focusBars }, windows: [{ id: 1, focused: true, tabs: ['https://mail/'] }] }
+      : { bar: shown, other: focusBars, windows: [{ id: 1, focused: true, tabs: ['https://mail/'] }] });
     const id = (t) => api._id(t);
-    await writeState(api.storage.local, { version: 1, barId: '1', rootId: id('Focus Bars'), generalId: id('General'), focusIds: [id('General'), id('Dev'), id('Music')], activeId: id('General'), journal: null, needsRecovery: new URLSearchParams(location.search).has('recovery'), prints: {}, lastSwapMs: 12 });
+    const barId = device ? id('Bookmarks Bar') : '1';
+    await writeState(api.storage.local, { version: 1, barId, rootId: id('Focus Bars'), generalId: id('General'), focusIds: [id('General'), id('Dev'), id('Music')], activeId: id('General'), journal: null, needsRecovery: params.has('recovery'), prints: {}, lastSwapMs: 12 });
     const ctl = createController(api);
     await ctl.boot();
     await ctl.restoreWindows();
     globalThis.chrome = {
       ...api,
+      tabs: { ...api.tabs, create: async ({ url }) => { document.title = `opened ${url}`; } },
       runtime: { sendMessage: (msg) => ctl.handleMessage(msg).then((result) => ({ ok: true, result }), (e) => ({ ok: false, error: e.message })) },
     };
     globalThis.fake = api;

@@ -190,3 +190,45 @@ test('the shown bar disappearing while running moves Focus Bars to the remaining
   assert.equal(state.barId, '1');
   assert.deepEqual(api._titles('1'), ['⇄ General', 'd1']);
 });
+
+// ---- The device-bar hint: Chrome shows the account bar and then the device bar
+// as one strip. Focus Bars switches the account part; the popup says how many
+// items on the device part stay on in every focus.
+
+async function bootTwoSets({ deviceBar = [], deviceFirst = false } = {}) {
+  const api = createFakeChrome({ bar: deviceBar, account: { bar: [link('a1')] }, accountFirst: !deviceFirst });
+  const ctl = createController(api);
+  await ctl.boot();
+  return { api, ctl };
+}
+
+test('the popup counts items saved only on this device that stay on the bar in every focus', async () => {
+  const { ctl } = await bootTwoSets({ deviceBar: [link('d1'), { title: 'Work', children: [link('w1'), link('w2')] }] });
+  const view = await ctl.handleMessage({ type: 'get', windowId: 1 });
+  assert.equal(view.deviceOnlyCount, 2, 'a folder counts as one item');
+  assert.equal(view.hideDeviceHint, false);
+});
+
+test('leftover ⇄ folders on the device bar are not counted', async () => {
+  const { ctl } = await bootTwoSets({ deviceBar: [
+    { title: '⇄ new', children: [{ title: '✓ new', url: 'chrome-extension://old/switch.html?focus=1' }] },
+    link('d1'),
+  ] });
+  assert.equal((await ctl.handleMessage({ type: 'get', windowId: 1 })).deviceOnlyCount, 1);
+});
+
+test('no device-only count with one bookmark set', async () => {
+  const { api } = await seeded();
+  const ctl = createController(api);
+  await ctl.boot();
+  assert.equal((await ctl.handleMessage({ type: 'get', windowId: 1 })).deviceOnlyCount, 0);
+});
+
+test('"Don\'t show again" hides the hint for good, even after Focus Bars moves sets', async () => {
+  const { api, ctl } = await bootTwoSets({ deviceBar: [link('d1')] });
+  await ctl.handleMessage({ type: 'hideDeviceHint' });
+  assert.equal((await ctl.handleMessage({ type: 'get', windowId: 1 })).hideDeviceHint, true);
+  await api.bookmarks.removeTree(api._id('Bookmarks Bar'));
+  await ctl.onBookmarkEvent('removed', (await readState(api.storage.local)).barId, {});
+  assert.equal((await readState(api.storage.local)).hideDeviceHint, true);
+});
