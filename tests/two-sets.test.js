@@ -232,3 +232,68 @@ test('"Don\'t show again" hides the hint for good, even after Focus Bars moves s
   await ctl.onBookmarkEvent('removed', (await readState(api.storage.local)).barId, {});
   assert.equal((await readState(api.storage.local)).hideDeviceHint, true);
 });
+
+test('replay of the reported profile: 1.0.0 state on the hidden device set, 65 bookmarks on the account bar', async () => {
+  const links = (prefix, n) => Array.from({ length: n }, (_, i) => link(`${prefix}${i + 1}`));
+  const sw = (n) => ({ title: '⇄ new', children: Array.from({ length: n }, (_, i) => ({ title: `f${i}`, url: `chrome-extension://old/switch.html?focus=${i}` })) });
+  const shown = links('acc', 65);
+  const api = createFakeChrome({
+    bar: [sw(4)],
+    other: [{ title: 'Focus Bars', children: [
+      { title: 'General', children: links('g', 2) },
+      { title: 'Removed – Ableton', children: links('ra', 4) },
+      { title: 'Music', children: links('m', 1) },
+      { title: 'Removed – Dev', children: links('rd', 2) },
+      { title: 'Removed – Fishing', children: links('rf', 2) },
+      { title: 'Dev', children: links('dv', 5) },
+      { title: 'new', children: [] },
+    ] }],
+    account: {
+      bar: shown,
+      other: [link('o1'), { title: 'Focus Bars', children: [
+        { title: 'General', children: [] },
+        { title: 'Dev', children: links('ad', 1) },
+        { title: 'Bass', children: [] },
+        { title: 'Ableton', children: [] },
+      ] }],
+    },
+    windows: [{ id: 1, focused: true, tabs: ['https://work/'] }],
+  });
+  const devRoot = api._id('Focus Bars');
+  const devKids = api._titles(devRoot);
+  const tree = (await api.bookmarks.getSubTree(devRoot))[0].children;
+  const idOf = (t) => tree.find((n) => n.title === t).id;
+  await writeState(api.storage.local, {
+    version: 1, barId: '1', rootId: devRoot, generalId: idOf('General'),
+    focusIds: [idOf('General'), idOf('Music'), idOf('Dev'), idOf('new')], activeId: idOf('new'),
+    journal: null, needsRecovery: false, prints: {}, lastSwapMs: 3, switcherId: api._id('⇄ new'), showSwitcher: true,
+  });
+  const accBar = api._id('Bookmarks Bar');
+  const accOther = api._id('Other Bookmarks');
+  const accRoot = (await api.bookmarks.getChildren(accOther)).find((n) => n.title === 'Focus Bars').id;
+  const accIds = await idsUnder(api, accRoot);
+  const shownIds = (await api.bookmarks.getChildren(accBar)).map((n) => n.id);
+
+  const ctl = createController(api);
+  await ctl.boot();
+  let state = await readState(api.storage.local);
+  assert.equal(state.barId, accBar);
+  assert.equal(state.rootId, accRoot, 'adopted the account Focus Bars');
+  assert.equal(state.needsRecovery, true, 'General, Bass and Ableton are all empty: ask');
+  const barNow = () => api.bookmarks.getChildren(accBar).then((k) => k.map((n) => n.id));
+  assert.deepEqual((await barNow()).filter((id) => shownIds.includes(id)), shownIds, '65 links untouched, in order');
+  assert.deepEqual(api._titles('1'), ['g1', 'g2'], 'device bar back on its General');
+  assert.deepEqual(api._titles(devRoot), devKids, 'device Focus Bars folders all still there');
+  assert.deepEqual(await idsUnder(api, accRoot), accIds, 'account Focus Bars untouched');
+
+  await ctl.handleMessage({ type: 'resolveRecovery', focusId: state.generalId });
+  assert.deepEqual(api._titles(accBar), ['⇄ General', ...shown.map((l) => l.title)]);
+
+  const accDev = (await api.bookmarks.getChildren(accRoot)).find((n) => n.title === 'Dev').id;
+  await ctl.handleMessage({ type: 'assign', windowId: 1, focusId: accDev });
+  assert.deepEqual(api._titles(accBar), ['⇄ Dev', 'ad1']);
+  await ctl.handleMessage({ type: 'assign', windowId: 1, focusId: state.generalId });
+  assert.deepEqual((await barNow()).slice(1), shownIds, 'all 65 back, same bookmarks, same order');
+  assert.deepEqual(api._titles('1'), ['g1', 'g2'], 'device set never touched by switching');
+  assert.equal((await ctl.handleMessage({ type: 'get', windowId: 1 })).deviceOnlyCount, 2, 'the hint will show 2');
+});

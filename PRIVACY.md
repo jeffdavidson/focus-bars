@@ -1,6 +1,6 @@
 # Focus Bars privacy policy
 
-*Last updated: 25 November 2026*
+*Last updated: 26 November 2026*
 
 Focus Bars is a Chrome extension that shows a different set of bookmarks on Chrome's bookmark bar for each window.
 
@@ -10,9 +10,9 @@ Focus Bars is a Chrome extension that shows a different set of bookmarks on Chro
 - **Its own settings:** which focus each window uses, which focus is on the bar, and whether the "⇄" menu is shown.
 
 ## Where it goes
-Everything stays on your computer, in Chrome's own bookmark storage and extension storage. **Focus Bars sends no data anywhere.** It has no servers, no analytics, no advertising and no third-party code. It doesn't sell or share any data.
+Focus Bars keeps its settings and window addresses in Chrome's extension storage on your computer, and works with your bookmarks in Chrome's own bookmark storage. **Focus Bars sends no data anywhere.** It has no servers, no analytics, no advertising and no third-party code. It doesn't sell or share any data.
 
-If you use **Chrome Sync**, Chrome itself syncs your bookmarks, including the folders Focus Bars manages, to your other devices under your Google account. That is part of Chrome and is controlled by your Chrome sync settings, not by Focus Bars.
+If you're signed in to Chrome and your bookmarks are saved to your **Google Account**, or you use **Chrome Sync**, Chrome itself saves your bookmarks to your account and syncs them to your other devices. That includes the folders and the "⇄" menu that Focus Bars manages, because Focus Bars works on the bookmark bar Chrome shows, which for signed-in users is the account's. Focus Bars never moves bookmarks between your account and this device. Saving and syncing are part of Chrome and are controlled by your Chrome settings, not by Focus Bars.
 
 ## Removing it
 When you uninstall Focus Bars, its stored settings and window addresses are deleted by Chrome. Your bookmarks stay where they are:
