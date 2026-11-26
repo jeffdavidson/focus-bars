@@ -87,7 +87,7 @@ function deviceHint(n) {
   hide.addEventListener('click', () => act(() => send({ type: 'hideDeviceHint' })));
   const items = n === 1 ? '1 item on your bookmark bar is' : `${n} items on your bookmark bar are`;
   return el('div', { className: 'notice', role: 'note' },
-    el('p', { textContent: `${items} saved only on this device, so ${n === 1 ? 'it shows' : 'they show'} in every focus. To make ${n === 1 ? 'it' : 'them'} part of a focus, move ${n === 1 ? 'it' : 'them'} to your Google Account.` }),
+    el('p', { textContent: `${items} saved only on this device, so ${n === 1 ? 'it shows' : 'they show'} in every focus. To make ${n === 1 ? 'it' : 'them'} part of a focus, move ${n === 1 ? 'it' : 'them'} to your Google Account, or delete ${n === 1 ? 'it' : 'them'} if ${n === 1 ? 'it’s' : 'they’re'} already there.` }),
     el('div', { className: 'row' }, open, hide),
   );
 }

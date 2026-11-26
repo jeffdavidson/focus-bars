@@ -165,3 +165,12 @@ The change:
   - remove the switch links from the old ⇄ folder, and the folder itself unless the user filed their own bookmarks in it.
 - **Never move bookmarks between the two sets.** The old set's Focus Bars folder is left where it is. Its focuses don't appear in the menus while the other set is shown; switching back adopts them again without a recovery question.
 
+
+### Hands-on check of 1.0.1 (2026-11-26): passed
+
+In the user's real, signed-in profile, which still held the 1.0.0 state on the hidden device set, after exporting bookmarks:
+
+1. Reloading as 1.0.1 asked which focus was on the bar (General, Dev, Bass, Ableton). There was no ⇄ menu until it was answered.
+2. Choosing General put **⇄ General** first on the bar. The badge showed "Gene", and the hint showed 2 device-only items: the device set's General, put back on its bar.
+3. Switching to Dev showed Dev's one bookmark, with the 2 device-only items still at the end. Switching back to General returned all 65 account bookmarks in order.
+4. **Open Bookmark Manager** opened it. The 2 device-only items were duplicates of bookmarks already in the account. Deleting them removed the hint, so its wording now also says "or delete them if they're already there".
