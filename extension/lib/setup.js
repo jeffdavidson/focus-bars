@@ -1,7 +1,7 @@
 import { findRoots } from './roots.js';
-import { readState, writeState } from './store.js';
-import { recoverJournal } from './swap.js';
-import { findStaleSwitcher } from './switcher-folder.js';
+import { readState, writeState, readWindows, writeWindows } from './store.js';
+import { recoverJournal, swapBar } from './swap.js';
+import { findStaleSwitcher, isSwitchLink } from './switcher-folder.js';
 
 export const ROOT_TITLE = 'Focus Bars';
 export const GENERAL_TITLE = 'General';
@@ -68,6 +68,7 @@ async function repair(api, state) {
 export async function initialize(api) {
   const { bookmarks, storage } = api;
   const existing = await readState(storage.local);
+  if (existing && existing.barId !== (await findRoots(bookmarks)).barId) return moveToShownSet(api, existing);
   if (existing) {
     await repair(api, existing);
     await writeState(storage.local, existing);
@@ -108,6 +109,41 @@ export async function initialize(api) {
     switcherId,
   });
   await writeState(storage.local, state);
+  return state;
+}
+
+/**
+ * Chrome now shows a different bookmark bar (account bookmarks were switched on
+ * or off). Start over in the set Chrome shows, as a reinstall would, and leave
+ * the old set's bookmarks where they are: nothing moves between sets.
+ */
+async function moveToShownSet(api, old) {
+  const { bookmarks, storage } = api;
+  if (await exists(bookmarks, old.barId)) {
+    // Finish a half-done swap in the old set, then put that set back on General,
+    // so its bar looks as it did before Focus Bars and every focus is in its folder.
+    old = (await recoverJournal(api)) ?? old;
+    if (!old.needsRecovery && old.activeId !== old.generalId && (await exists(bookmarks, old.generalId))) {
+      old = await swapBar(api, old.generalId);
+    }
+  }
+  // Our ⇄ menu on the old bar would only go stale. Remove its switch links, and
+  // the folder too unless the user filed bookmarks of their own in it.
+  if (old.switcherId && (await exists(bookmarks, old.switcherId))) {
+    const kids = await bookmarks.getChildren(old.switcherId);
+    if (kids.some((k) => isSwitchLink(k.url))) {
+      for (const k of kids) if (isSwitchLink(k.url)) await bookmarks.remove(k.id);
+      if ((await bookmarks.getChildren(old.switcherId)).length === 0) await bookmarks.remove(old.switcherId);
+    }
+  }
+  await storage.local.remove('state');
+  const state = await initialize(api);
+  state.showSwitcher = old.showSwitcher ?? true;
+  if (old.hideDeviceHint) state.hideDeviceHint = true;
+  await writeState(storage.local, state);
+  const wins = await readWindows(storage.session);
+  for (const w of Object.values(wins)) w.focusId = state.activeId;
+  await writeWindows(storage.session, wins);
   return state;
 }
 

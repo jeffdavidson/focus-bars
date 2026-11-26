@@ -33,11 +33,12 @@ Bookmarks are only ever moved, never deleted. While a focus isn't on the bar, it
 
 GOOD TO KNOW
 • Chrome has one bookmark bar, so switching the focus changes what every window's bar shows. Each window still remembers its own focus.
-• With Chrome Sync on, every switch is synced to your other devices. It works best on one device, or with bookmark sync turned off there.
+• With Chrome Sync on, or bookmarks saved to your Google Account, every switch is synced to your other devices. It works best on one device.
+• Signed in with bookmarks saved to your Google Account? Focus Bars switches your account bookmarks. Bookmarks saved only on this device stay on the bar in every focus; the toolbar menu tells you how many.
 • If you uninstall, delete the ⇄ folder from your bar by hand. Your other bookmarks stay where they are.
 
 PRIVACY
-Everything stays on your computer. Focus Bars sends no data anywhere: no servers, no analytics, no ads.
+Focus Bars sends no data anywhere: no servers, no analytics, no ads. Your bookmarks stay in Chrome's own bookmark storage (and in your Google Account if Chrome saves them there).
 ```
 
 **Category:** Productivity → Workflow & Planning

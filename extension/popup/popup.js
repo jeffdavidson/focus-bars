@@ -79,6 +79,19 @@ function nameForm({ label, initial, withCopy, submitText, onSubmit }) {
   return form;
 }
 
+/** Chrome shows the account bar and then the device-only bar; Focus Bars switches only the first. */
+function deviceHint(n) {
+  const open = el('button', { textContent: 'Open Bookmark Manager' });
+  open.addEventListener('click', () => chrome.tabs.create({ url: 'chrome://bookmarks' }));
+  const hide = el('button', { textContent: 'Don’t show again' });
+  hide.addEventListener('click', () => act(() => send({ type: 'hideDeviceHint' })));
+  const items = n === 1 ? '1 item on your bookmark bar is' : `${n} items on your bookmark bar are`;
+  return el('div', { className: 'notice', role: 'note' },
+    el('p', { textContent: `${items} saved only on this device, so ${n === 1 ? 'it shows' : 'they show'} in every focus. To make ${n === 1 ? 'it' : 'them'} part of a focus, move ${n === 1 ? 'it' : 'them'} to your Google Account, or delete ${n === 1 ? 'it' : 'them'} if ${n === 1 ? 'it’s' : 'they’re'} already there.` }),
+    el('div', { className: 'row' }, open, hide),
+  );
+}
+
 function renderList() {
   const current = view.focuses.find((f) => f.id === view.current);
   const parts = [
@@ -117,6 +130,7 @@ function renderList() {
       actions.append(del);
     }
     parts.push(actions);
+    if (view.deviceOnlyCount > 0 && !view.hideDeviceHint) parts.push(deviceHint(view.deviceOnlyCount));
     const toggle = el('input', { type: 'checkbox', checked: view.showSwitcher !== false });
     toggle.addEventListener('change', () => act(() => send({ type: 'setShowSwitcher', value: toggle.checked })));
     parts.push(el('label', { className: 'setting' }, toggle, 'Show focus menu on bookmark bar'));

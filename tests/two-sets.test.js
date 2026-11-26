@@ -1,0 +1,299 @@
+// Signed-in Chrome can keep two bookmark sets: one on this device (syncing=false)
+// and one saved in the Google account (syncing=true), each with its own bar and
+// "Other bookmarks". Chrome shows the account bar. Focus Bars must work in the
+// set Chrome shows, follow it when that changes, and never move bookmarks
+// between the two sets.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { createFakeChrome } from './fake-chrome.js';
+import { seeded } from './helpers.js';
+import { findRoots } from '../extension/lib/roots.js';
+import { initialize } from '../extension/lib/setup.js';
+import { handleExternalChange } from '../extension/lib/focuses.js';
+import { readState, writeState, readWindows, writeWindows } from '../extension/lib/store.js';
+import { createController } from '../extension/lib/controller.js';
+
+const link = (t) => ({ title: t, url: `https://${t}/` });
+
+/** Ids of every node under `id`, depth-first, so tests can prove nothing left a set. */
+async function idsUnder(api, id) {
+  const [node] = await api.bookmarks.getSubTree(id);
+  const out = [];
+  const walk = (n) => { out.push(n.id); (n.children ?? []).forEach(walk); };
+  (node.children ?? []).forEach(walk);
+  return out.sort();
+}
+
+for (const accountFirst of [false, true]) {
+  test(`findRoots picks the account bar and the account Other bookmarks (account ${accountFirst ? 'first' : 'second'})`, async () => {
+    const api = createFakeChrome({ account: {}, accountFirst });
+    const accBar = api._id('Bookmarks Bar');
+    const accOther = api._id('Other Bookmarks');
+    assert.deepEqual(await findRoots(api.bookmarks), { barId: accBar, otherId: accOther });
+  });
+}
+
+test('first run with two sets makes the account bar General and keeps the device set untouched', async () => {
+  const api = createFakeChrome({ bar: [link('d1')], account: { bar: [link('a1'), link('a2')] } });
+  const accBar = api._id('Bookmarks Bar');
+  const accOther = api._id('Other Bookmarks');
+  const state = await initialize(api);
+  assert.equal(state.barId, accBar);
+  assert.equal((await api.bookmarks.get(state.rootId))[0].parentId, accOther, 'Focus Bars in the account set');
+  assert.deepEqual(api._titles(accBar), ['a1', 'a2']);
+  assert.deepEqual(api._titles('1'), ['d1']);
+  assert.deepEqual(api._titles('2'), [], 'nothing created in the device set');
+});
+
+test('account bookmarks switched on after install: Focus Bars moves to the shown bar, leaving the device set as it was', async () => {
+  const { api, rootId } = await seeded();
+  // The device bar's switcher, as a running extension leaves it.
+  const sw = await api.bookmarks.create({ parentId: '1', index: 0, title: '⇄ General' });
+  await api.bookmarks.create({ parentId: sw.id, title: '✓ General', url: 'chrome-extension://fakeid/switch.html?focus=x' });
+  const st = await readState(api.storage.local);
+  await writeState(api.storage.local, { ...st, switcherId: sw.id, showSwitcher: false });
+  await writeWindows(api.storage.session, { 7: { focusId: st.generalId, printKey: 'k' } });
+  const deviceFocusBars = await idsUnder(api, rootId);
+
+  const { barId: accBar, otherId: accOther } = api._addAccountSet({ bar: [link('a1')] });
+  const state = await initialize(api);
+
+  assert.equal(state.barId, accBar);
+  assert.equal((await api.bookmarks.get(state.rootId))[0].parentId, accOther);
+  assert.equal(state.activeId, state.generalId);
+  assert.deepEqual(state.focusIds, [state.generalId]);
+  assert.equal(state.needsRecovery, false);
+  assert.equal(state.showSwitcher, false, 'settings carried over');
+  assert.equal(state.journal, null);
+  assert.deepEqual(api._titles(accBar), ['a1'], 'shown bar untouched');
+  assert.deepEqual(api._titles('1'), ['a', 'b', 'c'], 'old switcher removed from the hidden bar, nothing else');
+  assert.deepEqual(await idsUnder(api, rootId), deviceFocusBars, 'device Focus Bars left exactly as it was');
+  const wins = await readWindows(api.storage.session);
+  assert.equal(wins[7].focusId, state.generalId, 'open windows follow to the new General');
+});
+
+test('moving to the account set adopts a Focus Bars folder already there', async () => {
+  const { api } = await seeded();
+  api._addAccountSet({
+    bar: [link('a1')],
+    other: [{ title: 'Focus Bars', children: [
+      { title: 'General', children: [] },
+      { title: 'Dev', children: [link('x')] },
+      { title: 'Bass', children: [] },
+    ] }],
+  });
+  const state = await initialize(api);
+  const accRoot = state.rootId;
+  assert.deepEqual(api._titles(accRoot), ['General', 'Dev', 'Bass']);
+  assert.equal(state.focusIds.length, 3);
+  assert.equal(state.needsRecovery, true, 'two empty folders: ask which one is on the bar');
+});
+
+test('account bookmarks switched off: Focus Bars returns to the device set and adopts its folders', async () => {
+  const api = createFakeChrome({ bar: [link('d1')], account: { bar: [link('a1')] }, accountFirst: true });
+  await initialize(api);
+  const accBar = api._id('Bookmarks Bar');
+  const accOther = api._id('Other Bookmarks');
+  api._dropNode(accBar);
+  api._dropNode(accOther);
+  const state = await initialize(api);
+  assert.equal(state.barId, '1');
+  assert.equal((await api.bookmarks.get(state.rootId))[0].parentId, '2');
+});
+
+test('a swap that died in the old set is finished there before moving on', async () => {
+  const { api, generalId, devId } = await seeded();
+  // Half-done swap General -> Dev: a, b already filed away; c still on the bar.
+  await api.bookmarks.move(api._id('a'), { parentId: generalId });
+  await api.bookmarks.move(api._id('b'), { parentId: generalId });
+  const st = await readState(api.storage.local);
+  await writeState(api.storage.local, { ...st, journal: { from: generalId, to: devId, phase: 'toFolder' } });
+
+  const { barId: accBar } = api._addAccountSet({ bar: [link('a1')] });
+  const state = await initialize(api);
+  assert.equal(state.barId, accBar);
+  assert.equal(state.journal, null);
+  assert.deepEqual(api._titles('1'), ['a', 'b', 'c'], 'old set finished, then put back on General');
+  assert.deepEqual(api._titles(devId), ['x', 'y'], 'Dev complete in its folder');
+  assert.deepEqual(api._titles(generalId), []);
+});
+
+test('leaving a set puts that set back on General, so nothing is stranded on a hidden bar', async () => {
+  const { api, generalId, devId } = await seeded();
+  const { swapBar } = await import('../extension/lib/swap.js');
+  await swapBar(api, devId);
+  assert.deepEqual(api._titles('1'), ['x', 'y']);
+  api._addAccountSet({ bar: [link('a1')] });
+  await initialize(api);
+  assert.deepEqual(api._titles('1'), ['a', 'b', 'c'], 'the hidden bar looks as it did before Focus Bars');
+  assert.deepEqual(api._titles(devId), ['x', 'y']);
+  assert.deepEqual(api._titles(generalId), []);
+});
+
+test('device (on Dev) → account → device comes back clean, with no recovery question', async () => {
+  const { api, devId } = await seeded();
+  const { swapBar } = await import('../extension/lib/swap.js');
+  await swapBar(api, devId);
+  const acc = api._addAccountSet({ bar: [link('a1')] });
+  await initialize(api);
+  api._dropNode(acc.barId);
+  api._dropNode(acc.otherId);
+  const state = await initialize(api);
+  assert.equal(state.barId, '1');
+  assert.equal(state.needsRecovery, false);
+  assert.equal(state.activeId, state.generalId);
+  assert.deepEqual(api._titles('1'), ['a', 'b', 'c']);
+  assert.deepEqual(api._titles(devId), ['x', 'y']);
+});
+
+test('a bookmark the user dropped into the old ⇄ folder is kept', async () => {
+  const { api } = await seeded();
+  const sw = await api.bookmarks.create({ parentId: '1', index: 0, title: '⇄ General' });
+  await api.bookmarks.create({ parentId: sw.id, title: '✓ General', url: 'chrome-extension://fakeid/switch.html?focus=x' });
+  await api.bookmarks.create({ parentId: sw.id, title: 'mine', url: 'https://mine/' });
+  const st = await readState(api.storage.local);
+  await writeState(api.storage.local, { ...st, switcherId: sw.id });
+  api._addAccountSet({ bar: [link('a1')] });
+  await initialize(api);
+  assert.ok(api._exists(sw.id), 'folder kept because it holds a user bookmark');
+  assert.deepEqual(api._titles(sw.id), ['mine'], 'only the switch links removed');
+});
+
+test('a deleted Focus Bars folder is rebuilt in the same set as the bar', async () => {
+  const api = createFakeChrome({ bar: [link('d1')], account: { bar: [link('a1')] } });
+  const st = await initialize(api);
+  const accOther = api._id('Other Bookmarks');
+  await api.bookmarks.removeTree(st.rootId);
+  await handleExternalChange(api, 'removed', st.rootId, {});
+  const state = await readState(api.storage.local);
+  assert.equal((await api.bookmarks.get(state.rootId))[0].parentId, accOther);
+  assert.deepEqual(api._titles('2'), [], 'device set untouched');
+});
+
+test('boot after account bookmarks are switched on puts the ⇄ menu on the shown bar', async () => {
+  const { api } = await seeded();
+  const { barId: accBar } = api._addAccountSet({ bar: [link('a1')] });
+  const ctl = createController(api);
+  await ctl.boot();
+  assert.deepEqual(api._titles(accBar), ['⇄ General', 'a1']);
+  assert.deepEqual(api._titles('1'), ['a', 'b', 'c']);
+});
+
+test('the shown bar disappearing while running moves Focus Bars to the remaining set', async () => {
+  const api = createFakeChrome({ bar: [link('d1')], account: { bar: [link('a1')] }, accountFirst: true });
+  const ctl = createController(api);
+  await ctl.boot();
+  const accBar = api._id('Bookmarks Bar');
+  await api.bookmarks.removeTree(accBar);
+  await ctl.onBookmarkEvent('removed', accBar, {});
+  const state = await readState(api.storage.local);
+  assert.equal(state.barId, '1');
+  assert.deepEqual(api._titles('1'), ['⇄ General', 'd1']);
+});
+
+// ---- The device-bar hint: Chrome shows the account bar and then the device bar
+// as one strip. Focus Bars switches the account part; the popup says how many
+// items on the device part stay on in every focus.
+
+async function bootTwoSets({ deviceBar = [], deviceFirst = false } = {}) {
+  const api = createFakeChrome({ bar: deviceBar, account: { bar: [link('a1')] }, accountFirst: !deviceFirst });
+  const ctl = createController(api);
+  await ctl.boot();
+  return { api, ctl };
+}
+
+test('the popup counts items saved only on this device that stay on the bar in every focus', async () => {
+  const { ctl } = await bootTwoSets({ deviceBar: [link('d1'), { title: 'Work', children: [link('w1'), link('w2')] }] });
+  const view = await ctl.handleMessage({ type: 'get', windowId: 1 });
+  assert.equal(view.deviceOnlyCount, 2, 'a folder counts as one item');
+  assert.equal(view.hideDeviceHint, false);
+});
+
+test('leftover ⇄ folders on the device bar are not counted', async () => {
+  const { ctl } = await bootTwoSets({ deviceBar: [
+    { title: '⇄ new', children: [{ title: '✓ new', url: 'chrome-extension://old/switch.html?focus=1' }] },
+    link('d1'),
+  ] });
+  assert.equal((await ctl.handleMessage({ type: 'get', windowId: 1 })).deviceOnlyCount, 1);
+});
+
+test('no device-only count with one bookmark set', async () => {
+  const { api } = await seeded();
+  const ctl = createController(api);
+  await ctl.boot();
+  assert.equal((await ctl.handleMessage({ type: 'get', windowId: 1 })).deviceOnlyCount, 0);
+});
+
+test('"Don\'t show again" hides the hint for good, even after Focus Bars moves sets', async () => {
+  const { api, ctl } = await bootTwoSets({ deviceBar: [link('d1')] });
+  await ctl.handleMessage({ type: 'hideDeviceHint' });
+  assert.equal((await ctl.handleMessage({ type: 'get', windowId: 1 })).hideDeviceHint, true);
+  await api.bookmarks.removeTree(api._id('Bookmarks Bar'));
+  await ctl.onBookmarkEvent('removed', (await readState(api.storage.local)).barId, {});
+  assert.equal((await readState(api.storage.local)).hideDeviceHint, true);
+});
+
+test('replay of the reported profile: 1.0.0 state on the hidden device set, 65 bookmarks on the account bar', async () => {
+  const links = (prefix, n) => Array.from({ length: n }, (_, i) => link(`${prefix}${i + 1}`));
+  const sw = (n) => ({ title: '⇄ new', children: Array.from({ length: n }, (_, i) => ({ title: `f${i}`, url: `chrome-extension://old/switch.html?focus=${i}` })) });
+  const shown = links('acc', 65);
+  const api = createFakeChrome({
+    bar: [sw(4)],
+    other: [{ title: 'Focus Bars', children: [
+      { title: 'General', children: links('g', 2) },
+      { title: 'Removed – Ableton', children: links('ra', 4) },
+      { title: 'Music', children: links('m', 1) },
+      { title: 'Removed – Dev', children: links('rd', 2) },
+      { title: 'Removed – Fishing', children: links('rf', 2) },
+      { title: 'Dev', children: links('dv', 5) },
+      { title: 'new', children: [] },
+    ] }],
+    account: {
+      bar: shown,
+      other: [link('o1'), { title: 'Focus Bars', children: [
+        { title: 'General', children: [] },
+        { title: 'Dev', children: links('ad', 1) },
+        { title: 'Bass', children: [] },
+        { title: 'Ableton', children: [] },
+      ] }],
+    },
+    windows: [{ id: 1, focused: true, tabs: ['https://work/'] }],
+  });
+  const devRoot = api._id('Focus Bars');
+  const devKids = api._titles(devRoot);
+  const tree = (await api.bookmarks.getSubTree(devRoot))[0].children;
+  const idOf = (t) => tree.find((n) => n.title === t).id;
+  await writeState(api.storage.local, {
+    version: 1, barId: '1', rootId: devRoot, generalId: idOf('General'),
+    focusIds: [idOf('General'), idOf('Music'), idOf('Dev'), idOf('new')], activeId: idOf('new'),
+    journal: null, needsRecovery: false, prints: {}, lastSwapMs: 3, switcherId: api._id('⇄ new'), showSwitcher: true,
+  });
+  const accBar = api._id('Bookmarks Bar');
+  const accOther = api._id('Other Bookmarks');
+  const accRoot = (await api.bookmarks.getChildren(accOther)).find((n) => n.title === 'Focus Bars').id;
+  const accIds = await idsUnder(api, accRoot);
+  const shownIds = (await api.bookmarks.getChildren(accBar)).map((n) => n.id);
+
+  const ctl = createController(api);
+  await ctl.boot();
+  let state = await readState(api.storage.local);
+  assert.equal(state.barId, accBar);
+  assert.equal(state.rootId, accRoot, 'adopted the account Focus Bars');
+  assert.equal(state.needsRecovery, true, 'General, Bass and Ableton are all empty: ask');
+  const barNow = () => api.bookmarks.getChildren(accBar).then((k) => k.map((n) => n.id));
+  assert.deepEqual((await barNow()).filter((id) => shownIds.includes(id)), shownIds, '65 links untouched, in order');
+  assert.deepEqual(api._titles('1'), ['g1', 'g2'], 'device bar back on its General');
+  assert.deepEqual(api._titles(devRoot), devKids, 'device Focus Bars folders all still there');
+  assert.deepEqual(await idsUnder(api, accRoot), accIds, 'account Focus Bars untouched');
+
+  await ctl.handleMessage({ type: 'resolveRecovery', focusId: state.generalId });
+  assert.deepEqual(api._titles(accBar), ['⇄ General', ...shown.map((l) => l.title)]);
+
+  const accDev = (await api.bookmarks.getChildren(accRoot)).find((n) => n.title === 'Dev').id;
+  await ctl.handleMessage({ type: 'assign', windowId: 1, focusId: accDev });
+  assert.deepEqual(api._titles(accBar), ['⇄ Dev', 'ad1']);
+  await ctl.handleMessage({ type: 'assign', windowId: 1, focusId: state.generalId });
+  assert.deepEqual((await barNow()).slice(1), shownIds, 'all 65 back, same bookmarks, same order');
+  assert.deepEqual(api._titles('1'), ['g1', 'g2'], 'device set never touched by switching');
+  assert.equal((await ctl.handleMessage({ type: 'get', windowId: 1 })).deviceOnlyCount, 2, 'the hint will show 2');
+});

@@ -4,7 +4,7 @@ import { createSwitcher } from './switcher.js';
 import { initialize, resolveRecovery } from './setup.js';
 import { listFocuses, createFocus, renameFocus, deleteFocus, handleExternalChange, drainActiveFolder } from './focuses.js';
 import { matchWindows, prunePrints } from './fingerprint.js';
-import { syncSwitcher } from './switcher-folder.js';
+import { syncSwitcher, countOtherBarItems } from './switcher-folder.js';
 
 export const RESTORE_MS = 60_000;
 export const DEBOUNCE_MS = 2_000;
@@ -248,6 +248,11 @@ export function createController(api, {
 
     async onBookmarkEvent(kind, id, info) {
       const r = await exclusive(async () => {
+        if (kind === 'removed' && id === (await readState(api.storage.local))?.barId) {
+          // The bar Chrome showed is gone (account bookmarks switched off): follow the one it shows now.
+          await initialize(api);
+          return { changed: true };
+        }
         const ext = await handleExternalChange(api, kind, id, info);
         const drained = await drainActiveFolder(api);
         return { changed: ext.changed || drained.changed };
@@ -305,6 +310,8 @@ export function createController(api, {
             needsRecovery: state.needsRecovery,
             lastSwapMs: state.lastSwapMs,
             showSwitcher: state.showSwitcher !== false,
+            deviceOnlyCount: await countOtherBarItems(api.bookmarks, state.barId),
+            hideDeviceHint: !!state.hideDeviceHint,
           };
         }
         case 'assign':
@@ -351,6 +358,13 @@ export function createController(api, {
             await writeState(api.storage.local, state);
           });
           await refresh();
+          return { ok: true };
+        case 'hideDeviceHint':
+          await exclusive(async () => {
+            const state = await readState(api.storage.local);
+            state.hideDeviceHint = true;
+            await writeState(api.storage.local, state);
+          });
           return { ok: true };
         default:
           throw new Error(`Unknown message: ${msg.type}`);

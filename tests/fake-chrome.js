@@ -31,7 +31,8 @@ function makeStorageArea() {
 }
 
 /**
- * @param {{bar?: Node[], other?: Node[], windows?: {id:number, type?:string, focused?:boolean, tabs?:(string|{url?:string,pendingUrl?:string})[]}[]}} seed
+ * @param {{bar?: Node[], other?: Node[], account?: {bar?: Node[], other?: Node[]}, accountFirst?: boolean, windows?: {id:number, type?:string, focused?:boolean, tabs?:(string|{url?:string,pendingUrl?:string})[]}[]}} seed
+ * `account` adds a second, account-saved set (syncing=true) after the device set, or before it with `accountFirst`.
  * Node = {title, url?, children?: Node[]}
  */
 export function createFakeChrome(seed = {}) {
@@ -46,23 +47,41 @@ export function createFakeChrome(seed = {}) {
   const onCreated = makeEvent();
   const onChanged = makeEvent();
 
-  function add(parentId, { title, url, children }, fixedId, folderType) {
+  function add(parentId, { title, url, children }, fixedId, folderType, syncing) {
     const id = fixedId ?? String(nextId++);
     const node = { id, parentId, title: title ?? '' };
     if (url !== undefined) node.url = url;
     else node.children = [];
     if (folderType) node.folderType = folderType;
+    if (syncing !== undefined) node.syncing = syncing;
     nodes.set(id, node);
     if (parentId != null) nodes.get(parentId).children.push(id);
     for (const c of children ?? []) add(id, c);
     return id;
   }
 
+  /** A second, account-saved set of top-level folders (syncing=true), as Chrome adds when account bookmarks are on. */
+  function addAccountSet({ bar = [], other = [] } = {}) {
+    const barId = add('0', { title: 'Bookmarks Bar' }, undefined, 'bookmarks-bar', true);
+    const otherId = add('0', { title: 'Other Bookmarks' }, undefined, 'other', true);
+    for (const n of bar) add(barId, n);
+    for (const n of other) add(otherId, n);
+    return { barId, otherId };
+  }
+
   add(null, { title: '', children: [] }, '0');
-  add('0', { title: 'Bookmarks bar' }, '1', 'bookmarks-bar');
-  add('0', { title: 'Other bookmarks' }, '2', 'other');
+  if (seed.account && seed.accountFirst) addAccountSet(seed.account);
+  add('0', { title: 'Bookmarks bar' }, '1', 'bookmarks-bar', false);
+  add('0', { title: 'Other bookmarks' }, '2', 'other', false);
   for (const n of seed.bar ?? []) add('1', n);
   for (const n of seed.other ?? []) add('2', n);
+  if (seed.account && !seed.accountFirst) addAccountSet(seed.account);
+
+  /** Every node reports the storage of the top-level folder it lives in. */
+  function syncingOf(n) {
+    while (n && n.syncing === undefined && n.parentId != null) n = nodes.get(n.parentId);
+    return n?.syncing;
+  }
 
   function need(id) {
     const n = nodes.get(String(id));
@@ -78,6 +97,8 @@ export function createFakeChrome(seed = {}) {
     }
     if (n.url !== undefined) out.url = n.url;
     if (n.folderType) out.folderType = n.folderType;
+    const syncing = syncingOf(n);
+    if (syncing !== undefined) out.syncing = syncing;
     if (deep && n.children) out.children = n.children.map((c) => view(nodes.get(c), true));
     return out;
   }
@@ -252,6 +273,13 @@ export function createFakeChrome(seed = {}) {
     _titles: (parentId) => need(parentId).children.map((c) => nodes.get(c).title),
     /** Id of the first node with this title (depth-first). */
     _id: (title) => [...nodes.values()].find((n) => n.title === title)?.id,
+    /** Turn on account bookmarks: add a syncing=true bar and Other bookmarks. Returns their ids. */
+    _addAccountSet: addAccountSet,
+    /** Turn account bookmarks off again: the account folders vanish (no events, as when Chrome does it). */
+    _dropNode: (id) => {
+      detach(nodes.get(id));
+      dropSubtree(id);
+    },
     /** Whether a node exists. */
     _exists: (id) => nodes.has(String(id)),
     /** Let n moves succeed, then make the next one throw (once). */
