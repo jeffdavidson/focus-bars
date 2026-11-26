@@ -20,6 +20,7 @@ A Chrome extension that gives each window its own **focus**: a named set of book
 ## Good to know
 - **There is one bookmark bar in Chrome.** Switching the focus changes what every window's bar shows. Each window still remembers its own focus.
 - **Chrome Sync.** With bookmark sync on, every switch is synced to your other devices. Use Focus Bars on one device, or turn off bookmark sync there.
+- **Signed in with bookmarks saved to your Google account?** Chrome then keeps two sets of bookmarks, and Focus Bars works in the one shown on your bar. If you switch account bookmarks on or off, Focus Bars starts fresh in the set Chrome now shows and leaves the other set as it was.
 - **Uninstalling:**
   - The bar keeps whichever focus was last on it.
   - Every other focus stays in **Other bookmarks → Focus Bars** as an ordinary folder.

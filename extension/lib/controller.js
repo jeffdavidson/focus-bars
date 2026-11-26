@@ -248,6 +248,11 @@ export function createController(api, {
 
     async onBookmarkEvent(kind, id, info) {
       const r = await exclusive(async () => {
+        if (kind === 'removed' && id === (await readState(api.storage.local))?.barId) {
+          // The bar Chrome showed is gone (account bookmarks switched off): follow the one it shows now.
+          await initialize(api);
+          return { changed: true };
+        }
         const ext = await handleExternalChange(api, kind, id, info);
         const drained = await drainActiveFolder(api);
         return { changed: ext.changed || drained.changed };

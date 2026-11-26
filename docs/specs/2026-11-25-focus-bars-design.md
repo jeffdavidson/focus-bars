@@ -147,3 +147,21 @@ The user ran the plan's Task 8 checklist in a throwaway Chrome profile with sync
 7. Deleting a focus from the popup: the `confirm()` prompt appeared, and the bookmarks were kept in "Removed – Dev".
 
 Observed and expected: because Chrome has one shared bar, changing the focus also changes what a background window's bar shows. Each window still keeps its own focus.
+
+## Two bookmark sets (2026-11-26, version 1.0.1)
+
+Found when the extension was installed in a real, signed-in profile. Newer Chrome can keep two complete bookmark sets in one profile: one saved in the Google account (`syncing=true`) and one kept only on this device (`syncing=false`). Each set has its own bookmark bar and its own Other bookmarks. In that profile Chrome showed the account bar. Version 1.0.0 recorded the first bar Chrome reported at install and never checked again. Account bookmarks were switched on after install, so every swap, the ⇄ menu and the focus folders went to the hidden device set. Deletions made in the Bookmark Manager (in the account set) never reached the folders the extension tracked.
+
+The change:
+
+- **Use the bar Chrome shows.** Prefer the `syncing=true` bar when there is one, and always use the Other bookmarks from the same set.
+- **Re-check it.** The check runs on every service-worker start, and when the tracked bar is deleted.
+- **Start over in the shown set when it changes,** as a reinstall would:
+  - adopt a Focus Bars folder already there (asking which focus is on the bar if that's unclear), or make the current bar General;
+  - carry over the ⇄ menu setting;
+  - point open windows at the new active focus;
+  - finish any half-done swap in the old set first;
+  - remove the extension's own ⇄ folder from the old bar.
+- **Never move bookmarks between the two sets.** The old set's Focus Bars folder is left as it was; the user can move it with Chrome's own "Move to account".
+
+Assumption checked in one profile only: when an account bar exists, Chrome shows it, not the device bar.
